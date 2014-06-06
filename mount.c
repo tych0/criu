@@ -706,6 +706,18 @@ out:
 	return ret;
 }
 
+#define MK_MOUNT_LOG(IMG_TYPE, FNAME) 					\
+	static int FNAME##_dump(struct mount_info *pm) 			\
+	{								\
+		pr_info("logging mount of %s\n", pm->fstype->name);	\
+		return 0;						\
+	}
+
+MK_MOUNT_LOG(CR_FD_PSTORE_IMG, pstore)
+MK_MOUNT_LOG(CR_FD_SECURITYFS_IMG, securityfs)
+MK_MOUNT_LOG(CR_FD_FUSECTL_IMG, fusectl)
+MK_MOUNT_LOG(CR_FD_DEBUGFS_IMG, debugfs)
+
 static struct fstype fstypes[] = {
 	{
 		.name = "unsupported",
@@ -738,6 +750,22 @@ static struct fstype fstypes[] = {
 	}, {
 		.name = "btrfs",
 		.code = FSTYPE__UNSUPPORTED,
+	}, {
+		.name = "pstore",
+		.dump = pstore_dump,
+		.code = FSTYPE__PSTORE,
+	}, {
+		.name = "securityfs",
+		.dump = securityfs_dump,
+		.code = FSTYPE__SECURITYFS,
+	}, {
+		.name = "fusectl",
+		.dump = fusectl_dump,
+		.code = FSTYPE__FUSECTL,
+	}, {
+		.name = "debugfs",
+		.dump = debugfs_dump,
+		.code = FSTYPE__DEBUGFS,
 	}
 };
 
