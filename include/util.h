@@ -303,4 +303,9 @@ static inline bool strstartswith(char *str, char *sub)
 	}
 }
 
+/*
+ * mkdir -p for a file descriptor
+ */
+int mkdirpat(int fd, const char* path);
+
 #endif /* __CR_UTIL_H__ */

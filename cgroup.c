@@ -258,9 +258,13 @@ static int move_in_cgroup(CgSetEntry *se)
 		int fd, err;
 		ControllerEntry *ce = se->ctls[i];
 
+		sprintf(aux, "%s/%s", ce->name, ce->path);
+		if (mkdirpat(cg, aux) < 0)
+			return -1;
+
 		sprintf(aux, "%s/%s/tasks", ce->name, ce->path);
 		pr_debug("  `-> %s\n", aux);
-		err = fd = openat(cg, aux, O_WRONLY);
+		err = fd = openat(cg, aux, O_WRONLY | O_CREAT, 0700);
 		if (fd >= 0) {
 			/*
 			 * Writing zero into this file moves current
