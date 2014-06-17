@@ -7,6 +7,7 @@
 #include <sys/stat.h>
 #include <sys/vfs.h>
 #include <ctype.h>
+#include <libgen.h>
 
 /* Stolen from kernel/fs/nfs/unlink.c */
 #define SILLYNAME_PREF ".nfs"
@@ -709,8 +710,11 @@ static int do_open_reg_noseek_flags(int ns_root_fd, struct reg_file_info *rfi, v
 {
 	u32 flags = *(u32 *)arg;
 	int fd;
+	char *dir;
 
 	fd = openat(ns_root_fd, rfi->path, flags);
+	dir = dirname(rfi->path);
+	mkdirpat(ns_root_fd, dir);
 	if (fd < 0) {
 		pr_perror("Can't open file %s on restore", rfi->path);
 		return fd;
