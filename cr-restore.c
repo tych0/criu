@@ -228,6 +228,9 @@ static int map_private_vma(pid_t pid, struct vma_area *vma, void **tgt_addr,
 	void *addr, *paddr = NULL;
 	unsigned long nr_pages, size;
 	struct vma_area *p = *pvma;
+	char aux[PATH_MAX];
+	int i;
+	struct stat st;
 
 	if (vma_area_is(vma, VMA_FILE_PRIVATE)) {
 		ret = get_filemap_fd(vma);
@@ -236,6 +239,25 @@ static int map_private_vma(pid_t pid, struct vma_area *vma, void **tgt_addr,
 			return -1;
 		}
 		vma->e->fd = ret;
+		pr_info("fixed up VMA's fd\n");
+	}
+
+	if (fstat(vma->e->fd, &st) < 0)
+	{
+		pr_perror("fstat failed\n");
+		return -1;
+	}
+
+
+	sprintf(aux, "/proc/self/fd/%ld", vma->e->fd);
+	ret = readlink(aux, aux, PATH_MAX);
+	ret[aux] = 0;
+	pr_info("vma->e->fd: %s\n", aux);
+
+	if (S_ISDIR(st.st_mode))
+	{
+		pr_info("vma->e->fd is a directory :-(\n");
+		return 0;
 	}
 
 	nr_pages = vma_entry_len(vma->e) / PAGE_SIZE;
@@ -287,6 +309,7 @@ static int map_private_vma(pid_t pid, struct vma_area *vma, void **tgt_addr,
 		 */
 		pr_info("Map 0x%016"PRIx64"-0x%016"PRIx64" 0x%016"PRIx64" vma\n",
 			vma->e->start, vma->e->end, vma->e->pgoff);
+		pr_info("Mapping %ld\n", vma->e->fd);
 
 		addr = mmap(*tgt_addr, size,
 				vma->e->prot | PROT_WRITE,
@@ -294,7 +317,10 @@ static int map_private_vma(pid_t pid, struct vma_area *vma, void **tgt_addr,
 				vma->e->fd, vma->e->pgoff);
 
 		if (addr == MAP_FAILED) {
-			pr_perror("Unable to map ANON_VMA");
+			sprintf(aux, "/proc/self/fd/%ld", vma->e->fd);
+			i = readlink(aux, aux, PATH_MAX);
+			aux[i] = 0;
+			pr_perror("Unable to map ANON_VMA %s", aux);
 			return -1;
 		}
 
@@ -1203,8 +1229,18 @@ static int restore_task_with_children(void *_arg)
 	pid_t pid;
 	int ret;
 	sigset_t blockmask;
+	TaskCoreEntry *tc;
 
 	current = ca->item;
+
+	tc = ca->core->tc;
+
+	if(tc) {
+		pr_info("Restoring task %s\n", tc->comm);
+	}
+	else {
+		pr_info("Restoring task no-task-name\n");
+	}
 
 	if (current != root_item) {
 		char buf[PATH_MAX];

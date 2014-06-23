@@ -1,0 +1,11 @@
+Make an LXC with the following additional config:
+
+# hax for criu
+lxc.console = none
+lxc.tty = 0
+lxc.cgroup.devices.deny = c 5:1 rwm
+
+Then run:
+
+sudo lxc-start -n u1 -d && sleep 5 && sudo ./dump.sh && sudo ./restore.sh
+# if you get an error about inventory.img, just sleep for longer :-)
