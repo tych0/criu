@@ -1545,6 +1545,7 @@ int parse_task_cgroup(int pid, struct list_head *retl, unsigned int *n)
 			xfree(ncc);
 			goto err;
 		}
+		ncc->cgroup = NULL;
 
 		list_for_each_entry(cc, retl, l)
 			if (strcmp(cc->name, name) >= 0)

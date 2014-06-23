@@ -5,6 +5,8 @@
 #include <unistd.h>
 #include <sys/mount.h>
 #include <sys/stat.h>
+#include <ftw.h>
+#include <libgen.h>
 #include "xmalloc.h"
 #include "cgroup.h"
 #include "pstree.h"
@@ -35,6 +37,9 @@ static char *cg_yard;
 static struct cg_set *root_cgset; /* Set root item lives in */
 static struct cg_set *criu_cgset; /* Set criu process lives in */
 static u32 cg_set_ids = 1;
+
+static LIST_HEAD(cgroups);
+static unsigned int n_cgroups;
 
 static CgSetEntry *find_rst_set_by_id(u32 id)
 {
@@ -118,6 +123,273 @@ static struct cg_set *get_cg_set(struct list_head *ctls, unsigned int n_ctls)
 	return cs;
 }
 
+struct cg_controller *new_controller(const char *name, unsigned int heirarchy)
+{
+	struct cg_controller *nc = xmalloc(sizeof(*nc));
+	if (!nc)
+		return NULL;
+
+	nc->controllers = xmalloc(sizeof(char*));
+	if (!nc->controllers) {
+		xfree(nc);
+		return NULL;
+	}
+
+	nc->controllers[0] = xstrdup(name);
+	if (!nc->controllers[0]) {
+		xfree(nc->controllers);
+		xfree(nc);
+		return NULL;
+	}
+
+	nc->n_controllers = 1;
+	nc->heirarchy = heirarchy;
+
+	nc->n_heads = 0;
+	INIT_LIST_HEAD(&nc->heads);
+
+	return nc;
+}
+
+/* Parse and create all the real controllers. This does not include things with
+ * the "name=" prefix, e.g. systemd.
+ */
+int parse_cgroups()
+{
+	FILE *f = fopen("/proc/cgroups", "r");
+	char buf[1024], name[1024];
+	uint32_t heirarchy;
+	struct cg_controller *cur = NULL;
+
+	if (!f) {
+		pr_perror("failed opening /proc/cgroups");
+		return -1;
+	}
+
+	/* throw away the header */
+	if (!fgets(buf, 1024, f))
+		return 0;
+
+	while(fgets(buf, 1024, f))
+	{
+		char *n;
+		char found = 0;
+
+		sscanf(buf, "%s" "%" SCNu32, name, &heirarchy);
+		list_for_each_entry(cur, &cgroups, l) {
+			if (cur->heirarchy == heirarchy)
+			{
+				found = 1;
+				cur->n_controllers++;
+				cur->controllers = xrealloc(cur->controllers,
+				                            sizeof(char*) * cur->n_controllers);
+				if (!cur->controllers)
+					return -1;
+
+				n = xstrdup(name);
+				if (!n)
+					return -1;
+
+				cur->controllers[cur->n_controllers-1] = n;
+				break;
+			}
+		}
+
+		if (!found)
+		{
+			struct cg_controller *nc = new_controller(name, heirarchy);
+			if (!nc)
+				return -1;
+			list_add_tail(&nc->l, &cur->l);
+			n_cgroups++;
+		}
+	}
+
+	return 0;
+}
+
+static struct cg_controller	*current_controller;
+
+#define EXACT_MATCH	0
+#define PARENT_MATCH	1
+#define NO_MATCH	2
+
+static int find_dir(const char *path, struct list_head *dirs, struct cgroup_dir **rdir)
+{
+	struct cgroup_dir *d;
+	list_for_each_entry(d, dirs, siblings) {
+		pr_info("%s %s\n", d->path, path);
+		if (strcmp(d->path, path) == 0) {
+			*rdir = d;
+			return EXACT_MATCH;
+		}
+
+		if (strncmp(d->path, path, strlen(d->path))) {
+			int ret = find_dir(path, &d->children, rdir);
+			if (ret == NO_MATCH) {
+				*rdir = d;
+				return PARENT_MATCH;
+			}
+			return ret;
+
+		}
+	}
+
+	return NO_MATCH;
+}
+
+static int add_cgroup(const char *fpath, const struct stat *sb, int typeflag)
+{
+	struct cgroup_dir *ncd = NULL, *match;
+	int ret = 0;
+	char pbuf[PATH_MAX], *name, *path;
+
+
+	if (typeflag == FTW_D)
+	{
+		FILE *f;
+		int mtype;
+
+		strncpy(pbuf, fpath, PATH_MAX);
+
+		pr_info("adding cgroup %s\n", fpath);
+
+		ncd = xmalloc(sizeof(*ncd));
+		if(!ncd)
+		{
+			ret = -1;
+			goto out;
+		}
+
+		/* skip strlen("/sys/fs/cgroup/") */
+		name = pbuf + 15;
+		path = strchr(name, '/');
+		ncd->path = xstrdup(path);
+		if (!ncd->path)
+		{
+			ret = -1;
+			goto out;
+		}
+
+		mtype = find_dir(path, &current_controller->heads, &match);
+
+		switch(mtype) {
+			/* ignore co-mounted cgroups */
+			case EXACT_MATCH :
+				goto out;
+			case PARENT_MATCH :
+				list_add_tail(&ncd->siblings, &match->children);
+				match->n_children++;
+				break;
+			case NO_MATCH :
+				list_add_tail(&ncd->siblings, &current_controller->heads);
+				current_controller->n_heads++;
+				break;
+		}
+
+		INIT_LIST_HEAD(&ncd->children);
+		ncd->n_children = 0;
+		ncd->controller = current_controller;
+
+		ncd->flags = 0;
+
+		snprintf(pbuf, PATH_MAX, "%s/memory.limit_in_bytes", fpath);
+		f = fopen(pbuf, "r");
+		if (f)
+		{
+			if (fscanf(f, "%" SCNu64, &ncd->mem_limit) != 1)
+			{
+				pr_err("Failed scanning %s\n", pbuf);
+				ret = -1;
+				goto out;
+			}
+			ncd->flags |= HAS_MEM_LIMIT;
+			fclose(f);
+		}
+
+		snprintf(pbuf, PATH_MAX, "%s/cpu.shares", fpath);
+		f = fopen(pbuf, "r");
+		if (f)
+		{
+			if (fscanf(f, "%" SCNu32, &ncd->cpu_shares) != 1)
+			{
+				pr_err("Failed scanning %s for u32\n", pbuf);
+				ret = -1;
+				goto out;
+			}
+			ncd->flags |= HAS_CPU_SHARES;
+			fclose(f);
+		}
+
+		return 0;
+	}
+
+out:
+	if(ncd) {
+		xfree(ncd->path);
+		xfree(ncd);
+	}
+
+	return ret;
+}
+
+static int collect_cgroups(struct list_head *ctls)
+{
+	struct cg_ctl *cc;
+	int ret = 0;
+
+	list_for_each_entry(cc, ctls, l) {
+		char path[PATH_MAX];
+		char *name;
+		struct cg_controller *cg;
+		int i;
+
+		if (strstartswith(cc->name, "name="))
+			name = cc->name + 5;
+		else
+			name = cc->name;
+
+		/* TODO: parse /proc/self/mountinfo for correct directories */
+		snprintf(path, PATH_MAX, "/sys/fs/cgroup/%s%s", name, cc->path);
+
+		current_controller = NULL;
+
+		/* Use the previously allocated struct for this controller if
+		 * there is one */
+		list_for_each_entry(cg, &cgroups, l) {
+			for (i = 0; i < cg->n_controllers; i++)
+			{
+				if (strcmp(cg->controllers[i], cc->name) == 0) {
+					current_controller = cg;
+					break;
+				}
+			}
+		}
+
+		if (!current_controller)
+		{
+			/* only allow "fake" controllers to be created this way */
+			if (!strstartswith(cc->name, "name=")) {
+				pr_err("controller %s not found\n", cc->name);
+				return -1;
+			} else {
+				struct cg_controller *nc = new_controller(cc->name, -1);
+				list_add_tail(&nc->l, &cg->l);
+				n_cgroups++;
+				current_controller = nc;
+			}
+		}
+
+		if ((ret = ftw(path, add_cgroup, 4)) < 0)
+		{
+			pr_perror("failed walking %s for empty cgroups\n", path);
+			return ret;
+		}
+	}
+
+	return 0;
+}
+
 int dump_task_cgroup(struct pstree_item *item, u32 *cg_id)
 {
 	int pid;
@@ -132,6 +404,9 @@ int dump_task_cgroup(struct pstree_item *item, u32 *cg_id)
 
 	pr_info("Dumping cgroups for %d\n", pid);
 	if (parse_task_cgroup(pid, &ctls, &n_ctls))
+		return -1;
+
+	if (collect_cgroups(&ctls) < 0)
 		return -1;
 
 	cs = get_cg_set(&ctls, n_ctls);
@@ -152,6 +427,75 @@ int dump_task_cgroup(struct pstree_item *item, u32 *cg_id)
 	return 0;
 }
 
+int dump_cg_dirs(struct list_head *dirs, size_t n_dirs, CgroupDirEntry ***ents)
+{
+	struct cgroup_dir *cur;
+	CgroupDirEntry *cde;
+	void *m;
+	int i = 0;
+
+	m = xmalloc(n_dirs * (sizeof(CgroupDirEntry *) + sizeof(CgroupDirEntry)));
+	*ents = m;
+	if (!m)
+		return -1;
+
+	cde = m + n_dirs * sizeof(CgroupDirEntry *);
+
+	list_for_each_entry(cur, dirs, siblings) {
+		cgroup_dir_entry__init(cde);
+
+		cde->path = cur->path;
+		cde->has_mem_limit = cur->flags & HAS_MEM_LIMIT;
+		cde->mem_limit = cur->mem_limit;
+		cde->has_cpu_shares = cur->flags & HAS_CPU_SHARES;
+		cde->cpu_shares = cur->cpu_shares;
+
+		cde->n_children = cur->n_children;
+		if (cur->n_children > 0)
+			if (dump_cg_dirs(&cur->children, cur->n_children, &cde->children) < 0) {
+				xfree(*ents);
+				return -1;
+			}
+		(*ents)[i++] = cde++;
+	}
+
+	return 0;
+}
+
+static int dump_controllers(CgroupEntry *cg)
+{
+	struct cg_controller *cur;
+	CgControllerEntry *ce;
+	void *m;
+	int i;
+
+	cg->n_controllers = n_cgroups;
+	m = xmalloc(n_cgroups * (sizeof(CgControllerEntry *) + sizeof(CgControllerEntry)));
+	cg->controllers = m;
+	ce = m + cg->n_controllers * sizeof(CgControllerEntry *);
+	if(!m)
+		return -1;
+
+	i = 0;
+	list_for_each_entry(cur, &cgroups, l) {
+		cg_controller_entry__init(ce);
+
+		ce->controllers = cur->controllers;
+		ce->n_controllers = cur->n_controllers;
+		// TODO: id?
+		ce->n_dirs = cur->n_heads;
+		if (ce->n_dirs > 0)
+			if (dump_cg_dirs(&cur->heads, cur->n_heads, &ce->dirs) < 0) {
+				xfree(cg->controllers);
+				return -1;
+			}
+		cg->controllers[i++] = ce++;
+	}
+
+	return 0;
+}
+
+
 static int dump_sets(CgroupEntry *cg)
 {
 	struct cg_set *set;
@@ -159,7 +503,7 @@ static int dump_sets(CgroupEntry *cg)
 	int s, c;
 	void *m;
 	CgSetEntry *se;
-	ControllerEntry *ce;
+	MemberEntry *ce;
 
 	pr_info("Dumping %d sets\n", n_sets - 1);
 
@@ -195,16 +539,16 @@ static int dump_sets(CgroupEntry *cg)
 		se->id = set->id;
 
 		se->n_ctls = set->n_ctls;
-		m = xmalloc(se->n_ctls * (sizeof(ControllerEntry *) + sizeof(ControllerEntry)));
+		m = xmalloc(se->n_ctls * (sizeof(MemberEntry *) + sizeof(MemberEntry)));
 		se->ctls = m;
-		ce = m + se->n_ctls * sizeof(ControllerEntry *);
+		ce = m + se->n_ctls * sizeof(MemberEntry *);
 		if (!m)
 			return -1;
 
 		c = 0;
 		list_for_each_entry(ctl, &set->ctls, l) {
 			pr_info("   `- Dumping %s of %s\n", ctl->name, ctl->path);
-			controller_entry__init(ce);
+			member_entry__init(ce);
 			ce->name = ctl->name;
 			ce->path = ctl->path;
 			se->ctls[c++] = ce++;
@@ -242,6 +586,8 @@ int dump_cgroups(void)
 
 	if (dump_sets(&cg))
 		return -1;
+	if (dump_controllers(&cg))
+		return -1;
 
 	pr_info("Writing CG image\n");
 	return pb_write_one(fdset_fd(glob_fdset, CR_FD_CGROUP), &cg, PB_CGROUP);
@@ -256,7 +602,7 @@ static int move_in_cgroup(CgSetEntry *se)
 	for (i = 0; i < se->n_ctls; i++) {
 		char aux[1024];
 		int fd, err;
-		ControllerEntry *ce = se->ctls[i];
+		MemberEntry *ce = se->ctls[i];
 
 		if (strstartswith(ce->name, "name="))
 			sprintf(aux, "%s/%s/tasks", ce->name + 5, ce->path);
@@ -323,6 +669,29 @@ void fini_cgroup(void)
 	xfree(cg_yard);
 }
 
+static int prepare_cgroup_dirs(char* paux, size_t off, CgroupDirEntry **ents, size_t n_ents)
+{
+	size_t i;
+	CgroupDirEntry *e;
+
+	for (i = 0; i < n_ents; i++)
+	{
+		e = ents[i];
+
+		sprintf(paux + off, "/%s", e->path);
+
+		if (mkdirp(paux)) {
+			pr_perror("Can't make cgroup dir %s", paux);
+			return -1;
+		}
+
+		/* TODO: restore mem_limit, cpu_shares */
+		prepare_cgroup_dirs(paux, off, e->children, e->n_children);
+	}
+
+	return 0;
+}
+
 /*
  * Prepare the CGROUP_YARD service descriptor. This guy is
  * tmpfs mount with the set of ctl->name directories each
@@ -341,10 +710,10 @@ void fini_cgroup(void)
  * them in advance.
  */
 
-static int prepare_cgroup_sfd(CgSetEntry *root_set)
+static int prepare_cgroup_sfd(CgroupEntry *ce)
 {
 	int off, i;
-	char paux[PATH_MAX], aux[128];
+	char paux[PATH_MAX];
 
 	pr_info("Preparing cgroups yard\n");
 
@@ -370,26 +739,46 @@ static int prepare_cgroup_sfd(CgSetEntry *root_set)
 		goto err;
 	}
 
-	for (i = 0; i < root_set->n_ctls; i++) {
-		ControllerEntry *ce = root_set->ctls[i];
-		char *opt = ce->name;
+	for (i = 0; i < ce->n_controllers; i++) {
+		CgControllerEntry *ctrl = ce->controllers[i];
+		int j, name_off, opt_off;
+		char *name, opt[1024];
 
-		if (strstartswith(ce->name, "name=")) {
-			sprintf(paux + off, "/%s", ce->name + 5);
-			sprintf(aux, "none,%s", ce->name);
-			opt = aux;
-		} else
-			sprintf(paux + off, "/%s", ce->name);
+		if (ctrl->n_controllers < 1) {
+			pr_err("Each cg_controller_entry must have at least 1 controller");
+			goto err;
+		}
+
+		if (strstartswith(ctrl->controllers[0], "name=")) {
+			name = ctrl->controllers[0] + 5;
+			opt_off = sprintf(opt, "none,%s", ctrl->controllers[0]);
+		} else {
+			name = ctrl->controllers[0];
+			opt_off = sprintf(opt, "%s", ctrl->controllers[0]);
+		}
+
+		for (j = 1; j < ctrl->n_controllers; j++)
+		{
+			name = ctrl->controllers[i];
+			opt_off += sprintf(opt + opt_off, ",%s", ctrl->controllers[i]);
+		}
+
+		name_off = sprintf(paux + off, "/%s", name);
 
 		if (mkdir(paux, 0700)) {
-			pr_perror("Can't make cgyard subdir");
+			pr_perror("Can't make cgyard subdir %s", paux);
 			goto err;
 		}
 
+		pr_info("opt: %s\n", opt);
 		if (mount("none", paux, "cgroup", 0, opt) < 0) {
-			pr_perror("Can't mount %s cgyard", ce->name);
+			pr_perror("Can't mount %s cgyard", paux);
 			goto err;
 		}
+
+		if(prepare_cgroup_dirs(paux, off + name_off, ctrl->dirs, ctrl->n_dirs))
+			goto err;
+
 	}
 
 	pr_debug("Opening %s as cg yard\n", cg_yard);
@@ -431,15 +820,5 @@ int prepare_cgroup(void)
 
 	n_sets = ce->n_sets;
 	rst_sets = ce->sets;
-	if (n_sets)
-		/*
-		 * We rely on the fact that all sets contain the same
-		 * set of controllers. This is checked during dump
-		 * with cg_set_compare(CGCMP_ISSUB) call.
-		 */
-		ret = prepare_cgroup_sfd(rst_sets[0]);
-	else
-		ret = 0;
-
-	return ret;
+	return prepare_cgroup_sfd(ce);
 }

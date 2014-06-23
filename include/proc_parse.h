@@ -5,6 +5,7 @@
 #include "asm/types.h"
 #include "image.h"
 #include "list.h"
+#include "cgroup.h"
 
 #include "protobuf/eventfd.pb-c.h"
 #include "protobuf/eventpoll.pb-c.h"
@@ -194,6 +195,7 @@ struct cg_ctl {
 	struct list_head l;
 	char *name;
 	char *path;
+	struct cgroup *cgroup;
 };
 
 /*
