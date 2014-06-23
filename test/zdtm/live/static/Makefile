@@ -160,6 +160,7 @@ TST_DIR		=				\
 		tempfs				\
 		bind-mount			\
 		cgroup00			\
+		cgroup01			\
 
 TST_DIR_FILE	=				\
 		chroot				\
