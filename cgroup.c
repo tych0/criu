@@ -482,7 +482,6 @@ static int dump_controllers(CgroupEntry *cg)
 
 		ce->controllers = cur->controllers;
 		ce->n_controllers = cur->n_controllers;
-		// TODO: id?
 		ce->n_dirs = cur->n_heads;
 		if (ce->n_dirs > 0)
 			if (dump_cg_dirs(&cur->heads, cur->n_heads, &ce->dirs) < 0) {
@@ -671,21 +670,50 @@ void fini_cgroup(void)
 
 static int prepare_cgroup_dirs(char* paux, size_t off, CgroupDirEntry **ents, size_t n_ents)
 {
-	size_t i;
+	size_t i, my_off;
 	CgroupDirEntry *e;
 
 	for (i = 0; i < n_ents; i++)
 	{
 		e = ents[i];
 
-		sprintf(paux + off, "/%s", e->path);
+		my_off = sprintf(paux + off, "/%s", e->path);
 
 		if (mkdirp(paux)) {
 			pr_perror("Can't make cgroup dir %s", paux);
 			return -1;
 		}
 
-		/* TODO: restore mem_limit, cpu_shares */
+		if (e->has_mem_limit) {
+			FILE *f;
+
+			sprintf(paux + my_off + off, "/memory.limit_in_bytes");
+
+			f = fopen(paux, "w+");
+			if (!f) {
+				pr_perror("Couldn't open %s for writing\n", paux);
+				return -1;
+			}
+
+			fprintf(f, "%" SCNu64, e->mem_limit);
+			fclose(f);
+		}
+
+		if (e->has_cpu_shares) {
+			FILE *f;
+
+			sprintf(paux + my_off + off, "/cpu.shares");
+
+			f = fopen(paux, "w+");
+			if (!f) {
+				pr_perror("Couldn't open %s for writing\n", paux);
+				return -1;
+			}
+
+			fprintf(f, "%" SCNu32, e->cpu_shares);
+			fclose(f);
+		}
+
 		prepare_cgroup_dirs(paux, off, e->children, e->n_children);
 	}
 
