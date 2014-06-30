@@ -44,6 +44,9 @@ struct cg_controller {
 	struct list_head	l;
 };
 
+/* Parse /proc/mountinfo for mount points of cgroups. */
+int parse_cg_mountinfo();
+
 /* Parse /proc/cgroups for co-mounted cgroups and initialize internal
  * structures. */
 int parse_cgroups();

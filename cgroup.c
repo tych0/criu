@@ -30,6 +30,12 @@ struct cg_set {
 	struct list_head	ctls;
 };
 
+struct cgroup_mount {
+	struct list_head	l;
+	char			*controller;
+	char			*path;
+};
+
 static LIST_HEAD(cg_sets);
 static unsigned int n_sets;
 static CgSetEntry **rst_sets;
@@ -40,6 +46,7 @@ static u32 cg_set_ids = 1;
 
 static LIST_HEAD(cgroups);
 static unsigned int n_cgroups;
+static LIST_HEAD(cgroup_mounts);
 
 static CgSetEntry *find_rst_set_by_id(u32 id)
 {
@@ -151,6 +158,64 @@ struct cg_controller *new_controller(const char *name, unsigned int heirarchy)
 	return nc;
 }
 
+struct cgroup_mount *find_cg_mount(const char *controller)
+{
+	struct cgroup_mount *cur;
+	list_for_each_entry(cur, &cgroup_mounts, l) {
+		if (strcmp(controller, cur->controller) == 0)
+			return cur;
+	}
+
+	return NULL;
+}
+
+int parse_cg_mountinfo()
+{
+	FILE *f = fopen("/proc/mounts", "r");
+	char buf[1024];
+
+	while(fgets(buf, 1024, f)) {
+		char path[PATH_MAX], fs[1024], opts[1024];
+		struct cgroup_mount *cgm;
+
+		if (sscanf(buf, "%*s %s %s %s %*d %*d", path, fs, opts) != 3)
+			return 0;
+
+		if (strcmp(fs, "cgroup") == 0) {
+			char *slash;
+
+			slash = strrchr(path, '/');
+			if (!slash) {
+				pr_err("bad path %s\n", path);
+				return -1;
+			}
+
+			cgm = xmalloc(sizeof(*cgm));
+			if (!cgm)
+				return -1;
+
+
+			*slash = '\0';
+			cgm->path = xstrdup(path);
+			if (!cgm->path) {
+				xfree(cgm);
+				return -1;
+			}
+
+			cgm->controller = xstrdup(slash + 1);
+			if (!cgm->controller) {
+				xfree(cgm->path);
+				xfree(cgm);
+				return -1;
+			}
+
+			list_add_tail(&cgm->l, &cgroup_mounts);
+		}
+	}
+
+	return 0;
+}
+
 /* Parse and create all the real controllers. This does not include things with
  * the "name=" prefix, e.g. systemd.
  */
@@ -214,6 +279,7 @@ int parse_cgroups()
 }
 
 static struct cg_controller	*current_controller;
+static char			*current_controller_name;
 
 #define EXACT_MATCH	0
 #define PARENT_MATCH	1
@@ -265,9 +331,16 @@ static int add_cgroup(const char *fpath, const struct stat *sb, int typeflag)
 			ret = -1;
 			goto out;
 		}
+		ncd->path = NULL;
+		pr_info("foo2\n");
 
-		/* skip strlen("/sys/fs/cgroup/") */
-		name = pbuf + 15;
+		name = strstr(fpath, current_controller_name);
+		if (!name) {
+			pr_err("%s has no name component (%s)\n", fpath, current_controller_name);
+			ret = -1;
+			goto out;
+		}
+
 		path = strchr(name, '/');
 		if (!path) {
 			pr_err("Bad path %s\n", name);
@@ -335,8 +408,9 @@ static int add_cgroup(const char *fpath, const struct stat *sb, int typeflag)
 	}
 
 out:
-	if(ncd) {
-		xfree(ncd->path);
+	if (ncd) {
+		if (ncd->path)
+			xfree(ncd->path);
 		xfree(ncd);
 	}
 
@@ -353,16 +427,23 @@ static int collect_cgroups(struct list_head *ctls)
 		char *name;
 		struct cg_controller *cg;
 		int i;
+		struct cgroup_mount *cgm;
 
 		if (strstartswith(cc->name, "name="))
 			name = cc->name + 5;
 		else
 			name = cc->name;
 
-		/* TODO: parse /proc/self/mountinfo for correct directories */
-		snprintf(path, PATH_MAX, "/sys/fs/cgroup/%s%s", name, cc->path);
+		cgm = find_cg_mount(name);
+		if (!cgm) {
+			pr_err("cgroup mount point for %s not found!\n", name);
+			return -1;
+		}
+
+		snprintf(path, PATH_MAX, "%s/%s%s", cgm->path, name, cc->path);
 
 		current_controller = NULL;
+		current_controller_name = name;
 
 		/* Use the previously allocated struct for this controller if
 		 * there is one */

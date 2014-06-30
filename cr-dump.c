@@ -1772,6 +1772,9 @@ int cr_dump_tasks(pid_t pid)
 	if (vdso_init())
 		goto err;
 
+	if (parse_cg_mountinfo())
+		goto err;
+
 	if (parse_cgroups())
 		goto err;
 
