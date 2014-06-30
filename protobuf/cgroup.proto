@@ -11,14 +11,14 @@ message cg_controller_entry {
 	repeated cgroup_dir_entry	dirs		= 3;
 }
 
-message member_entry {
+message cg_member_entry {
 	required string		name		= 1;
         required string		path            = 2;
 }
 
 message cg_set_entry {
         required uint32                 id      = 1;
-        repeated member_entry		ctls    = 3;
+        repeated cg_member_entry	ctls    = 3;
 }
 
 message cgroup_entry {

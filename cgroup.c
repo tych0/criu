@@ -512,7 +512,7 @@ static int dump_sets(CgroupEntry *cg)
 	int s, c;
 	void *m;
 	CgSetEntry *se;
-	MemberEntry *ce;
+	CgMemberEntry *ce;
 
 	pr_info("Dumping %d sets\n", n_sets - 1);
 
@@ -548,16 +548,16 @@ static int dump_sets(CgroupEntry *cg)
 		se->id = set->id;
 
 		se->n_ctls = set->n_ctls;
-		m = xmalloc(se->n_ctls * (sizeof(MemberEntry *) + sizeof(MemberEntry)));
+		m = xmalloc(se->n_ctls * (sizeof(CgMemberEntry *) + sizeof(CgMemberEntry)));
 		se->ctls = m;
-		ce = m + se->n_ctls * sizeof(MemberEntry *);
+		ce = m + se->n_ctls * sizeof(CgMemberEntry *);
 		if (!m)
 			return -1;
 
 		c = 0;
 		list_for_each_entry(ctl, &set->ctls, l) {
 			pr_info("   `- Dumping %s of %s\n", ctl->name, ctl->path);
-			member_entry__init(ce);
+			cg_member_entry__init(ce);
 			ce->name = ctl->name;
 			ce->path = ctl->path;
 			se->ctls[c++] = ce++;
@@ -611,7 +611,7 @@ static int move_in_cgroup(CgSetEntry *se)
 	for (i = 0; i < se->n_ctls; i++) {
 		char aux[1024];
 		int fd, err;
-		MemberEntry *ce = se->ctls[i];
+		CgMemberEntry *ce = se->ctls[i];
 
 		if (strstartswith(ce->name, "name="))
 			sprintf(aux, "%s/%s/tasks", ce->name + 5, ce->path);
