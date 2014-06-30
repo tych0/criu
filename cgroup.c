@@ -269,9 +269,14 @@ static int add_cgroup(const char *fpath, const struct stat *sb, int typeflag)
 		/* skip strlen("/sys/fs/cgroup/") */
 		name = pbuf + 15;
 		path = strchr(name, '/');
+		if (!path) {
+			pr_err("Bad path %s\n", name);
+			ret = -1;
+			goto out;
+		}
+
 		ncd->path = xstrdup(path);
-		if (!ncd->path)
-		{
+		if (!ncd->path) {
 			ret = -1;
 			goto out;
 		}
