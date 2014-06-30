@@ -179,10 +179,15 @@ int parse_cgroups()
 		list_for_each_entry(cur, &cgroups, l) {
 			if (cur->heirarchy == heirarchy)
 			{
+				void *m;
+
 				found = 1;
 				cur->n_controllers++;
-				cur->controllers = xrealloc(cur->controllers,
-				                            sizeof(char*) * cur->n_controllers);
+				m = xrealloc(cur->controllers, sizeof(char*) * cur->n_controllers);
+				if(!m)
+					return -1;
+
+				cur->controllers = m;
 				if (!cur->controllers)
 					return -1;
 
