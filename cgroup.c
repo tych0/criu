@@ -44,6 +44,9 @@ static LIST_HEAD(cgroups);
 static unsigned int n_cgroups;
 static struct mount_info *cg_mntinfo;
 
+static CgControllerEntry **cg_controllers;
+static unsigned int n_controllers;
+
 static CgSetEntry *find_rst_set_by_id(u32 id)
 {
 	int i;
@@ -693,29 +696,25 @@ void fini_cgroup(void)
 	xfree(cg_yard);
 }
 
-static int prepare_cgroup_dirs(char *paux, size_t off, CgroupDirEntry **ents, size_t n_ents)
+static int prepare_cgroup_dir_properties(char *controller, CgroupDirEntry **ents, unsigned int n_ents)
 {
-	size_t i, my_off;
-	CgroupDirEntry *e;
+	size_t i;
+	int cg;
+
+	cg = get_service_fd(CGROUP_YARD);
 
 	for (i = 0; i < n_ents; i++) {
-		e = ents[i];
-
-		my_off = sprintf(paux + off, "/%s", e->path);
-
-		if (mkdirp(paux)) {
-			pr_perror("Can't make cgroup dir %s", paux);
-			return -1;
-		}
+		CgroupDirEntry *e = ents[i];
+		char path[PATH_MAX];
 
 		if (e->has_mem_limit) {
 			FILE *f;
 
-			sprintf(paux + my_off + off, "/memory.limit_in_bytes");
+			sprintf(path, "%s/%s/memory.limit_in_bytes", controller, e->path);
 
-			f = fopen(paux, "w+");
+			f = fopenat(cg, path, "w+");
 			if (!f) {
-				pr_perror("Couldn't open %s for writing\n", paux);
+				pr_perror("Couldn't open %s for writing\n", path);
 				return -1;
 			}
 
@@ -726,16 +725,60 @@ static int prepare_cgroup_dirs(char *paux, size_t off, CgroupDirEntry **ents, si
 		if (e->has_cpu_shares) {
 			FILE *f;
 
-			sprintf(paux + my_off + off, "/cpu.shares");
+			sprintf(path, "%s/%s/cpu.shares", controller, e->path);
 
-			f = fopen(paux, "w+");
+			f = fopenat(cg, path, "w+");
 			if (!f) {
-				pr_perror("Couldn't open %s for writing\n", paux);
+				pr_perror("Couldn't open %s for writing\n", path);
 				return -1;
 			}
 
 			fprintf(f, "%" SCNu32, e->cpu_shares);
 			fclose(f);
+		}
+
+		if (prepare_cgroup_dir_properties(controller, e->children, e->n_children) < 0)
+			return -1;
+	}
+
+	return 0;
+}
+
+int prepare_cgroup_properties()
+{
+	unsigned int i;
+
+	for (i = 0; i < n_controllers; i++) {
+		CgControllerEntry *c = cg_controllers[i];
+
+		if (c->n_controllers < 1) {
+			pr_err("Each CgControllerEntry should have at least 1 contrller\n");
+			return -1;
+		}
+
+		/* Here we just restore properties of the first controller.
+		 * Since they are co-mounted everything will propagate.
+		 */
+		if (prepare_cgroup_dir_properties(c->controllers[0], c->dirs, c->n_dirs) < 0)
+			return -1;
+	}
+
+	return 0;
+}
+
+static int prepare_cgroup_dirs(char *paux, size_t off, CgroupDirEntry **ents, size_t n_ents)
+{
+	size_t i;
+	CgroupDirEntry *e;
+
+	for (i = 0; i < n_ents; i++) {
+		e = ents[i];
+
+		sprintf(paux + off, "/%s", e->path);
+
+		if (mkdirp(paux)) {
+			pr_perror("Can't make cgroup dir %s", paux);
+			return -1;
 		}
 
 		prepare_cgroup_dirs(paux, off, e->children, e->n_children);
@@ -870,6 +913,9 @@ int prepare_cgroup(void)
 
 	n_sets = ce->n_sets;
 	rst_sets = ce->sets;
+
+	n_controllers = ce->n_controllers;
+	cg_controllers = ce->controllers;
 	if (n_sets)
 		/*
 		 * We rely on the fact that all sets contain the same

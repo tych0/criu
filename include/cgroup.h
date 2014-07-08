@@ -7,6 +7,8 @@ int dump_task_cgroup(struct pstree_item *, u32 *);
 int dump_cgroups(void);
 int prepare_task_cgroup(struct pstree_item *);
 int prepare_cgroup(void);
+/* Restore things like cpu_limit in known cgroups. */
+int prepare_cgroup_properties();
 void fini_cgroup(void);
 
 #define HAS_MEM_LIMIT	(1 << 0)

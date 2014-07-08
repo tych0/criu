@@ -726,3 +726,32 @@ bool is_path_prefix(const char *path, const char *prefix)
 
 	return false;
 }
+
+FILE *fopenat(int dirfd, char *path, char *cflags)
+{
+	int tmp, flags = 0;
+	char *iter;
+
+	for (iter = cflags; *iter; iter++) {
+		switch (*iter) {
+		case 'r':
+			flags |= O_RDONLY;
+			break;
+		case 'a':
+			flags |= O_APPEND;
+			break;
+		case 'w':
+			flags |= O_WRONLY;
+			break;
+		case '+':
+			flags = O_RDWR | O_CREAT;
+			break;
+		}
+	}
+
+	tmp = openat(dirfd, path, flags, S_IRUSR | S_IWUSR);
+	if (tmp < 0)
+		return NULL;
+
+	return fdopen(tmp, cflags);
+}

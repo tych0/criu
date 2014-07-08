@@ -314,4 +314,5 @@ int mkdirp(const char *path);
  * refer to different directories.
  */
 bool is_path_prefix(const char *path, const char *prefix);
+FILE *fopenat(int dirfd, char *path, char *cflags);
 #endif /* __CR_UTIL_H__ */
