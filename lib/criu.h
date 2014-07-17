@@ -20,6 +20,7 @@
 #define __CRIU_LIB_H__
 
 #include <stdbool.h>
+#include <inttypes.h>
 
 void criu_set_service_address(char *path);
 
@@ -47,6 +48,7 @@ void criu_set_log_level(int log_level);
 void criu_set_log_file(char *log_file);
 void criu_set_cpu_cap(unsigned int cap);
 void criu_set_root(char *root);
+void criu_set_ns_flags(uint32_t flags);
 int criu_set_exec_cmd(int argc, char *argv[]);
 int criu_add_ext_mount(char *key, char *val);
 int criu_add_veth_pair(char *in, char *out);
