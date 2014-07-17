@@ -266,6 +266,9 @@ static int setup_opts_from_req(int sk, CriuOpts *req)
 	if (req->has_force_irmap)
 		opts.force_irmap = req->force_irmap;
 
+	if (req->has_ns_flags)
+		opts.rst_namespaces_flags = req->ns_flags;
+
 	if (req->n_exec_cmd > 0) {
 		opts.exec_cmd = xmalloc((req->n_exec_cmd + 1) * sizeof(char *));
 		memcpy(opts.exec_cmd, req->exec_cmd, req->n_exec_cmd * sizeof(char *));

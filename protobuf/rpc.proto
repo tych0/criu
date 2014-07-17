@@ -47,6 +47,7 @@ message criu_opts {
 	repeated ext_mount_map		ext_mnt		= 23;
 
 	repeated string			action_scripts	= 24;
+	optional uint32			ns_flags	= 25;
 }
 
 message criu_dump_resp {

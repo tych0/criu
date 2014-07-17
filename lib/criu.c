@@ -163,6 +163,12 @@ void criu_set_cpu_cap(unsigned int cap)
 	opts->cpu_cap		= cap;
 }
 
+void criu_set_ns_flags(uint32_t flags)
+{
+	opts->has_ns_flags	= true;
+	opts->ns_flags		= flags;
+}
+
 int criu_set_exec_cmd(int argc, char *argv[])
 {
 	int i;
