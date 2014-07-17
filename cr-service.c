@@ -300,6 +300,21 @@ static int setup_opts_from_req(int sk, CriuOpts *req)
 			return -1;
 	}
 
+	for (i = 0; i < req->n_action_scripts; i++) {
+		struct script *script;
+
+		script = xmalloc(sizeof(*script));
+		if(!script)
+			return -1;
+
+		script->path = xstrdup(req->action_scripts[i]);
+		if (!script->path) {
+			free(script);
+			return -1;
+		}
+		list_add(&script->node, &opts.scripts);
+	}
+
 	if (req->has_cpu_cap)
 		opts.cpu_cap = req->cpu_cap;
 

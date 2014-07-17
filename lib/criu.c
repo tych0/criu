@@ -259,6 +259,27 @@ er:
 	return -ENOMEM;
 }
 
+int criu_add_action_script(char *script)
+{
+	void *m;
+	opts->n_action_scripts++;
+	m = realloc(opts->action_scripts, sizeof(char*) * opts->n_action_scripts);
+	if (!m) {
+		opts->n_action_scripts--;
+		return -1;
+	}
+	opts->action_scripts = m;
+
+	m = strdup(script);
+	opts->action_scripts[opts->n_action_scripts - 1] = m;
+	if (!m) {
+		opts->n_action_scripts--;
+		return -1;
+	}
+
+	return 0;
+}
+
 static CriuResp *recv_resp(int socket_fd)
 {
 	unsigned char buf[CR_MAX_MSG_SIZE];
