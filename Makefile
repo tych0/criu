@@ -266,6 +266,12 @@ install: $(PROGRAM) install-man
 	$(Q) install -m 644 scripts/sd/criu.service $(DESTDIR)$(SYSTEMDUNITDIR)
 	$(Q) mkdir -p $(DESTDIR)$(LOGROTATEDIR)
 	$(Q) install -m 644 scripts/logrotate.d/criu-service $(DESTDIR)$(LOGROTATEDIR)
+	$(Q) sed -e 's,@version@,$(GITID),' \
+		-e 's,@libdir@,$(DESTDIR)$(LIBDIR),' \
+		-e 's,@includedir@,$(DESTDIR)$(dir $(INCLUDEDIR)),' \
+		lib/criu.pc.in > criu.pc
+	$(Q) mkdir -p $(DESTDIR)$(LIBDIR)/pkgconfig
+	$(Q) install -m 644 criu.pc $(DESTDIR)$(LIBDIR)/pkgconfig
 
 install-man:
 	$(Q) $(MAKE) -C Documentation install
