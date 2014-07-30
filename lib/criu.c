@@ -12,7 +12,6 @@
 #include <signal.h>
 
 #include "criu.h"
-#include "rpc.pb-c.h"
 #include "cr-service-const.h"
 
 const char *criu_lib_version = CRIU_VERSION;

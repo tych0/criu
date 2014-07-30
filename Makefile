@@ -114,7 +114,7 @@ SYSCALL-LIB	:= $(ARCH_DIR)/syscalls.built-in.o
 ARCH-LIB	:= $(ARCH_DIR)/crtools.built-in.o
 CRIU-SO		:= libcriu
 CRIU-LIB	:= lib/$(CRIU-SO).so
-CRIU-INC	:= lib/criu.h include/criu-plugin.h include/criu-log.h protobuf/rpc.proto
+CRIU-INC	:= lib/criu.h include/criu-plugin.h include/criu-log.h protobuf/rpc.pb-c.h protobuf/rpc.proto
 
 export CC MAKE CFLAGS LIBS SRCARCH DEFINES MAKEFLAGS CRIU-SO
 export SRC_DIR SYSCALL-LIB SH RM ARCH_DIR OBJCOPY LDARCH LD

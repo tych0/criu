@@ -22,6 +22,8 @@
 #include <stdbool.h>
 #include <inttypes.h>
 
+#include "rpc.pb-c.h"
+
 void criu_set_service_address(char *path);
 
 /*
