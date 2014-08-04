@@ -303,6 +303,9 @@ static int setup_opts_from_req(int sk, CriuOpts *req)
 	if (req->has_cpu_cap)
 		opts.cpu_cap = req->cpu_cap;
 
+	if (req->has_restore_cgroups)
+		opts.restore_cgroups = req->restore_cgroups;
+
 	return 0;
 }
 

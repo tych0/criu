@@ -10,6 +10,7 @@
 #include "list.h"
 #include "xmalloc.h"
 #include "cgroup.h"
+#include "cr_options.h"
 #include "pstree.h"
 #include "proc_parse.h"
 #include "util.h"
@@ -771,7 +772,8 @@ static int prepare_cgroup_sfd(CgroupEntry *ce)
 			goto err;
 		}
 
-		if (prepare_cgroup_dirs(paux, off + name_off, ctrl->dirs, ctrl->n_dirs))
+		if (opts.restore_cgroups &&
+		    prepare_cgroup_dirs(paux, off + name_off, ctrl->dirs, ctrl->n_dirs))
 			goto err;
 
 	}

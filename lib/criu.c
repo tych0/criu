@@ -152,6 +152,12 @@ void criu_set_root(char *root)
 	opts->root = strdup(root);
 }
 
+void criu_set_restore_cgroups(bool restore)
+{
+	opts->has_restore_cgroups = true;
+	opts->restore_cgroups = restore;
+}
+
 void criu_set_log_file(char *log_file)
 {
 	opts->log_file = strdup(log_file);
