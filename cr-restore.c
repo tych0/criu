@@ -987,6 +987,10 @@ static inline int fork_with_pid(struct pstree_item *item)
 		goto err_unlock;
 	}
 
+	if (ca.clone_flags & CLONE_NEWPID && mount(NULL, "/proc", "proc", MS_REMOUNT, NULL) < 0) {
+		pr_perror("can't remount /proc");
+		goto err_unlock;
+	}
 
 	if (item == root_item)
 		item->pid.real = ret;
