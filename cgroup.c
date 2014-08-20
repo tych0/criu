@@ -50,8 +50,12 @@ static const char *memory_props[] = {
 static const char *cpuset_props[] = {
 	/*
 	 * cpuset.cpus and cpuset.mems must be set before the process moves
-	 * into its cgroup and hence can't be done here
+	 * into its cgroup; they are "initialized" below to whatever the root
+	 * values are in copy_special_cg_props so as not to cause ENOSPC when
+	 * values are restored via this code.
 	 */
+	"cpuset.cpus",
+	"cpuset.mems",
 	"cpuset.memory_migrate",
 	"cpuset.cpu_exclusive",
 	"cpuset.mem_exclusive",
@@ -300,9 +304,8 @@ static inline char *strip(char *str)
  */
 static int read_cgroup_prop(struct cgroup_prop *property, const char *fullpath)
 {
-	char buf[1024];
+	char buf[1024], *endptr;
 	FILE *f;
-	char *endptr;
 
 	f = fopen(fullpath, "r");
 	if (!f) {
@@ -324,6 +327,9 @@ static int read_cgroup_prop(struct cgroup_prop *property, const char *fullpath)
 		pr_err("Failed closing %s\n", fullpath);
 		return -1;
 	}
+
+	if (strtoll(buf, &endptr, 10) == LLONG_MAX)
+		strcpy(buf, "-1");
 
 	property->value = xstrdup(strip(buf));
 	if (!property->value)
@@ -853,6 +859,54 @@ static int ctrl_dir_and_opt(CgControllerEntry *ctl, char *dir, int ds,
 	return doff;
 }
 
+static const char *special_cpuset_props[] = {
+	"cpuset.cpus",
+	"cpuset.mems",
+	NULL,
+};
+
+static int copy_special_cg_props(const char *controller, const char *path)
+{
+	int cg = get_service_fd(CGROUP_YARD);
+
+	pr_info("copying special cg props for %s\n", controller);
+
+	if (strstr(controller, "cpuset")) {
+		int i;
+
+		for (i = 0; special_cpuset_props[i]; i++) {
+			char fpath[PATH_MAX], buf[1024];
+			const char *prop = special_cpuset_props[i];
+			int ret;
+			FILE *f;
+
+			snprintf(fpath, PATH_MAX, "%s/%s", controller, prop);
+			f = fopenat(cg, fpath, "r");
+			if (!f)
+				return -1;
+
+			ret = fscanf(f, "%1024s", buf);
+			fclose(f);
+
+			if (ret <= 0) {
+				continue;
+			}
+
+			pr_info("copying %s for %s/%s\n", buf, controller, prop);
+
+			snprintf(fpath, PATH_MAX, "%s/%s/%s", controller, path, prop);
+			f = fopenat(cg, fpath, "w");
+			if (!f)
+				return -1;
+
+			fprintf(f, "%s", buf);
+			fclose(f);
+		}
+	}
+
+	return 0;
+}
+
 static int move_in_cgroup(CgSetEntry *se)
 {
 	int cg, i;
@@ -879,6 +933,12 @@ static int move_in_cgroup(CgSetEntry *se)
 		}
 
 		aux_off = ctrl_dir_and_opt(ctrl, aux, sizeof(aux), NULL, 0);
+
+		if (copy_special_cg_props(aux, ce->path) < 0) {
+			pr_perror("Couldn't copy special cgroup properties\n");
+			return -1;
+		}
+
 		snprintf(aux + aux_off, sizeof(aux) - aux_off, "/%s/tasks", ce->path);
 		pr_debug("  `-> %s\n", aux);
 		err = fd = openat(cg, aux, O_WRONLY);
