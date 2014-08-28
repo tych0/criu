@@ -1346,6 +1346,24 @@ static int do_bind_mount(struct mount_info *mi)
 		root = rpath;
 do_bind:
 		pr_info("\tBind %s to %s\n", root, mi->mountpoint);
+
+		if (access(mi->mountpoint, F_OK)) {
+			if (errno == ENOENT) {
+				FILE *f;
+
+				f = fopen(mi->mountpoint, "w");
+				if (!f) {
+					pr_perror("couldn't write 0 length %s", mi->mountpoint);
+					return -1;
+				}
+
+				fclose(f);
+			} else {
+				pr_perror("Couldn't access %s", mi->mountpoint);
+				return -1;
+			}
+		}
+
 		if (mount(root, mi->mountpoint, NULL,
 					MS_BIND, NULL) < 0) {
 			pr_perror("Can't mount at %s", mi->mountpoint);
