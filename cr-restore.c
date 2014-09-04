@@ -93,6 +93,7 @@ static int prepare_restorer_blob(void);
 static int prepare_rlimits(int pid, CoreEntry *core);
 static int prepare_posix_timers(int pid, CoreEntry *core);
 static int prepare_signals(int pid, CoreEntry *core);
+static int restore_switch_stage(int next_stage);
 
 static int root_as_sibling;
 
@@ -766,35 +767,42 @@ err:
 
 static int restore_one_alive_task(int pid, CoreEntry *core)
 {
+	int ret = -1;
+
 	pr_info("Restoring resources\n");
 
 	rst_mem_switch_to_private();
 
-	if (pstree_wait_helpers())
-		return -1;
-
 	if (prepare_fds(current))
-		return -1;
+		goto err;
 
 	if (prepare_file_locks(pid))
-		return -1;
+		goto err;
 
 	if (open_vmas(pid))
-		return -1;
+		goto err;
 
 	if (open_cores(pid, core))
-		return -1;
+		goto err;
 
 	if (prepare_signals(pid, core))
-		return -1;
+		goto err;
 
 	if (prepare_posix_timers(pid, core))
-		return -1;
+		goto err;
 
 	if (prepare_rlimits(pid, core) < 0)
-		return -1;
+		goto err;
 
-	return sigreturn_restore(pid, core);
+	if (sigreturn_restore(pid, core))
+		goto err;
+
+	ret = 0;
+err:
+	if (pstree_wait_helpers())
+		ret = -1;
+
+	return ret;
 }
 
 static void zombie_prepare_signals(void)
@@ -931,9 +939,9 @@ static int restore_one_task(int pid, CoreEntry *core)
 		ret = restore_one_alive_task(pid, core);
 	else if (current->state == TASK_DEAD)
 		ret = restore_one_zombie(pid, core);
-	else if (current->state == TASK_HELPER)
-		ret = 0;
-	else {
+	else if (current->state == TASK_HELPER) {
+		ret = restore_finish_stage(CR_STATE_RESTORE);
+	} else {
 		pr_err("Unknown state in code %d\n", (int)core->tc->task_state);
 		ret = -1;
 	}
@@ -1490,6 +1498,7 @@ static inline int stage_participants(int next_stage)
 	case CR_STATE_FORKING:
 		return task_entries->nr_tasks + task_entries->nr_helpers;
 	case CR_STATE_RESTORE:
+		return task_entries->nr_threads + task_entries->nr_helpers;
 	case CR_STATE_RESTORE_SIGCHLD:
 		return task_entries->nr_threads;
 	case CR_STATE_RESTORE_CREDS:
