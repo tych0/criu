@@ -956,18 +956,15 @@ struct cr_clone_arg {
 static void maybe_clone_parent(struct pstree_item *item,
 			      struct cr_clone_arg *ca)
 {
+	/*
+	 * zdtm runs in kernel 3.11, which has the problem described below. We
+	 * avoid this by including the pdeath_sig test. Once users/zdtm migrate
+	 * off of 3.11, this condition can be simplified to just test the
+	 * options and not have the pdeath_sig test.
+	 */
 	if (opts.swrk_restore ||
 	    (opts.restore_detach && ca->core->thread_core->pdeath_sig)) {
 		/*
-		 * This means we're called from lib's criu_restore_child().
-		 * In that case create the root task as the child one to+
-		 * the caller. This is the only way to correctly restore the
-		 * pdeath_sig of the root task. But also looks nice.
-		 *
-		 * Alternatively, if we are --restore-detached, a similar trick is
-		 * needed to correctly restore pdeath_sig and prevent processes from
-		 * dying once restored.
-		 *
 		 * There were a problem in kernel 3.11 -- CLONE_PARENT can't be
 		 * set together with CLONE_NEWPID, which has been solved in further
 		 * versions of the kernels, but we treat 3.11 as a base, so at
@@ -1169,18 +1166,6 @@ static int criu_signals_setup(void)
 	}
 
 	act.sa_flags |= SA_NOCLDSTOP | SA_SIGINFO | SA_RESTART;
-	if (root_as_sibling)
-		/*
-		 * Root task will be our sibling. This means, that
-		 * we will not notice when (if) it dies in SIGCHLD
-		 * handler, but we should. To do this -- attach to
-		 * the guy with ptrace (below) and (!) make the kernel
-		 * deliver us the signal when it will get stopped.
-		 * It will in case of e.g. segfault before handling
-		 * the signal.
-		 */
-		act.sa_flags &= ~SA_NOCLDSTOP;
-
 	act.sa_sigaction = sigchld_handler;
 	sigemptyset(&act.sa_mask);
 	sigaddset(&act.sa_mask, SIGCHLD);
@@ -1668,6 +1653,20 @@ static int restore_root_task(struct pstree_item *init)
 		return -1;
 
 	if (root_as_sibling) {
+		struct sigaction act;
+		/*
+		 * Root task will be our sibling. This means, that
+		 * we will not notice when (if) it dies in SIGCHLD
+		 * handler, but we should. To do this -- attach to
+		 * the guy with ptrace (below) and (!) make the kernel
+		 * deliver us the signal when it will get stopped.
+		 * It will in case of e.g. segfault before handling
+		 * the signal.
+		 */
+		sigaction(SIGCHLD, NULL, &act);
+		act.sa_flags &= ~SA_NOCLDSTOP;
+		sigaction(SIGCHLD, &act, NULL);
+
 		if (ptrace(PTRACE_SEIZE, init->pid.real, 0, 0)) {
 			pr_perror("Can't attach to init");
 			goto out;
