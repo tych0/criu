@@ -134,6 +134,7 @@ transition/maps007
 static/dumpable01
 static/dumpable02
 static/deleted_dev
+static/remap_dead_pid
 "
 
 #
