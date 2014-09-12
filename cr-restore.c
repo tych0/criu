@@ -702,7 +702,7 @@ static int pstree_wait_helpers()
 {
 	struct pstree_item *pi;
 
-	list_for_each_entry(pi, &current->children, sibling) {
+	for_each_pstree_item(pi) {
 		int status, ret;
 
 		if (pi->state != TASK_HELPER)
@@ -771,10 +771,6 @@ static int restore_one_alive_task(int pid, CoreEntry *core)
 	rst_mem_switch_to_private();
 
 	if (prepare_fds(current))
-		return -1;
-	restore_finish_stage(CR_STATE_SETUP_FDS);
-
-	if (pstree_wait_helpers())
 		return -1;
 
 	if (prepare_file_locks(pid))
@@ -933,7 +929,7 @@ static int restore_one_task(int pid, CoreEntry *core)
 	else if (current->state == TASK_DEAD)
 		ret = restore_one_zombie(pid, core);
 	else if (current->state == TASK_HELPER) {
-		restore_finish_stage(CR_STATE_SETUP_FDS);
+		restore_finish_stage(CR_STATE_RESTORE);
 		ret = 0;
 	} else {
 		pr_err("Unknown state in code %d\n", (int)core->tc->task_state);
@@ -1419,6 +1415,9 @@ static int restore_task_with_children(void *_arg)
 
 		if (root_prepare_shared())
 			goto err_fini_mnt;
+
+		if (restore_finish_stage(CR_STATE_RESTORE_SHARED) < 0)
+			goto err_fini_mnt;
 	}
 
 	if (prepare_mappings(pid))
@@ -1488,12 +1487,12 @@ static inline int stage_participants(int next_stage)
 	case CR_STATE_FAIL:
 		return 0;
 	case CR_STATE_RESTORE_NS:
+	case CR_STATE_RESTORE_SHARED:
 		return 1;
 	case CR_STATE_FORKING:
 		return task_entries->nr_tasks + task_entries->nr_helpers;
-	case CR_STATE_SETUP_FDS:
-		return task_entries->nr_threads + task_entries->nr_helpers;
 	case CR_STATE_RESTORE:
+		return task_entries->nr_threads + task_entries->nr_helpers;
 	case CR_STATE_RESTORE_SIGCHLD:
 		return task_entries->nr_threads;
 	case CR_STATE_RESTORE_CREDS:
@@ -1700,6 +1699,9 @@ static int restore_root_task(struct pstree_item *init)
 		goto out;
 
 	timing_start(TIME_FORK);
+	ret = restore_switch_stage(CR_STATE_RESTORE_SHARED);
+	if (ret < 0)
+		goto out;
 
 	ret = restore_switch_stage(CR_STATE_FORKING);
 	if (ret < 0)
@@ -1707,16 +1709,15 @@ static int restore_root_task(struct pstree_item *init)
 
 	timing_stop(TIME_FORK);
 
-	ret = restore_switch_stage(CR_STATE_SETUP_FDS);
-	if (ret < 0)
-		goto out_kill;
-
 	ret = restore_switch_stage(CR_STATE_RESTORE);
 	if (ret < 0)
 		goto out_kill;
 
 	ret = restore_switch_stage(CR_STATE_RESTORE_SIGCHLD);
 	if (ret < 0)
+		goto out_kill;
+
+	if (pstree_wait_helpers() < 0)
 		goto out_kill;
 
 	ret = run_scripts(ACT_POST_RESTORE);

@@ -363,8 +363,10 @@ long __export_restore_thread(struct thread_restore_args *args)
 
 	restore_finish_stage(CR_STATE_RESTORE);
 
-	if (restore_signals(args->siginfo, args->siginfo_nr, false))
+	if (restore_signals(args->siginfo, args->siginfo_nr, false)) {
+pr_err("restore_signals() failed\n");
 		goto core_restore_end;
+	}
 
 	restore_finish_stage(CR_STATE_RESTORE_SIGCHLD);
 	restore_pdeath_sig(args);
