@@ -51,6 +51,8 @@ static struct task_entries *task_entries;
 static futex_t thread_inprogress;
 static futex_t zombies_inprogress;
 static int cap_last_cap;
+static pid_t *helpers;
+static int n_helpers;
 
 extern void cr_restore_rt (void) asm ("__cr_restore_rt")
 			__attribute__ ((visibility ("hidden")));
@@ -58,6 +60,13 @@ extern void cr_restore_rt (void) asm ("__cr_restore_rt")
 static void sigchld_handler(int signal, siginfo_t *siginfo, void *data)
 {
 	char *r;
+	int i;
+
+	/* We can ignore helpers that die, we expect them to after
+	 * CR_STATE_RESTORE is finished. */
+	for (i = 0; i < n_helpers; i++)
+		if (siginfo->si_pid == helpers[i])
+			return;
 
 	if (futex_get(&task_entries->start) == CR_STATE_RESTORE_SIGCHLD) {
 		pr_debug("%ld: Collect a zombie with (pid %d, %d)\n",
@@ -701,6 +710,34 @@ static int unmap_old_vmas(void *premmapped_addr, unsigned long premmapped_len,
 	return 0;
 }
 
+static int wait_helpers(struct task_restore_args *task_args)
+{
+	int i;
+
+	for (i = 0; i < task_args->n_helpers; i++) {
+		int status;
+		pid_t pid = task_args->helpers[i];
+
+		/* Check, that a helper completed. */
+		if (sys_waitpid(pid, &status, 0, NULL) == -1) {
+// TODO: ??
+#if 0
+			if (errno == ECHILD)
+				continue; /* It has been waited in sigchld_handler */
+#endif
+			pr_err("waitpid(%d) failed\n", pid);
+			return -1;
+		}
+		if (!WIFEXITED(status) || WEXITSTATUS(status)) {
+			pr_err("%d exited with non-zero code (%d,%d)\n", pid,
+				WEXITSTATUS(status), WTERMSIG(status));
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
 /*
  * The main routine to restore task via sigreturn.
  * This one is very special, we never return there
@@ -729,6 +766,8 @@ long __export_restore_task(struct task_restore_args *args)
 #endif
 
 	task_entries = args->task_entries;
+	helpers = args->helpers;
+	n_helpers = args->n_helpers;
 
 	ksigfillset(&act.rt_sa_mask);
 	act.rt_sa_handler = sigchld_handler;
@@ -1019,6 +1058,9 @@ long __export_restore_task(struct task_restore_args *args)
 
 	futex_wait_while_gt(&zombies_inprogress, 0);
 
+	if (wait_helpers(args) < 0)
+		goto core_restore_end;
+
 	ksigfillset(&to_block);
 	ret = sys_sigprocmask(SIG_SETMASK, &to_block, NULL, sizeof(k_rtsigset_t));
 	if (ret) {
@@ -1037,8 +1079,10 @@ long __export_restore_task(struct task_restore_args *args)
 		goto core_restore_end;
 
 	restore_finish_stage(CR_STATE_RESTORE_SIGCHLD);
+pr_err("RESTORE_SIGCHLD %ld\n", sys_getpid());
 
 	rst_tcp_socks_all(args);
+pr_err("rst_tcp_socks_all %ld\n", sys_getpid());
 
 	/*
 	 * Writing to last-pid is CAP_SYS_ADMIN protected,
@@ -1050,8 +1094,10 @@ long __export_restore_task(struct task_restore_args *args)
 	ret = ret || restore_dumpable_flag(&args->mm);
 	ret = ret || restore_pdeath_sig(args->t);
 
+pr_err("futex_set_and_wake %ld\n", sys_getpid());
 	futex_set_and_wake(&thread_inprogress, args->nr_threads);
 
+pr_err("restore_finish_stage %ld\n", sys_getpid());
 	restore_finish_stage(CR_STATE_RESTORE_CREDS);
 
 	if (ret)

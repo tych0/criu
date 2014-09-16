@@ -158,6 +158,19 @@ void *rst_mem_alloc(unsigned long size, int type)
 	return ret;
 }
 
+void *rst_mem_grow_last(unsigned long size, int type)
+{
+	struct rst_mem_type_s *t = &rst_mems[type];
+	unsigned long last = t->last;
+	void *ret;
+
+	ret = rst_mem_alloc(size, type);
+	if (!ret)
+		return NULL;
+	t->last = last + size;
+	return ret;
+}
+
 void rst_mem_free_last(int type)
 {
 	struct rst_mem_type_s *t = &rst_mems[type];

@@ -150,6 +150,9 @@ struct task_restore_args {
 
 	int				fd_last_pid; /* sys.ns_last_pid for threads rst */
 
+	pid_t				*helpers /* the TASK_HELPERS to wait on at the end of restore */;
+	int				n_helpers;
+
 #ifdef CONFIG_VDSO
 	unsigned long			vdso_rt_size;
 	struct vdso_symtable		vdso_sym_rt;		/* runtime vdso symbols */
@@ -170,7 +173,6 @@ enum {
 	CR_STATE_RESTORE_NS	= 0, /* is used for executing "setup-namespace" scripts */
 	CR_STATE_RESTORE_SHARED,
 	CR_STATE_FORKING,
-	CR_STATE_RESTORE_FS,
 	CR_STATE_RESTORE,
 	CR_STATE_RESTORE_SIGCHLD,
 	/*
