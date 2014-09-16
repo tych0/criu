@@ -856,7 +856,6 @@ static int restore_one_zombie(int pid, CoreEntry *core)
 	sys_prctl(PR_SET_NAME, (long)(void *)core->tc->comm, 0, 0, 0);
 
 	if (task_entries != NULL) {
-		restore_finish_stage(CR_STATE_RESTORE_FS);
 		restore_finish_stage(CR_STATE_RESTORE);
 		zombie_prepare_signals();
 		mutex_lock(&task_entries->zombie_lock);
@@ -930,7 +929,7 @@ static int restore_one_task(int pid, CoreEntry *core)
 	else if (current->state == TASK_DEAD)
 		ret = restore_one_zombie(pid, core);
 	else if (current->state == TASK_HELPER) {
-		restore_finish_stage(CR_STATE_RESTORE_FS);
+		restore_finish_stage(CR_STATE_RESTORE);
 		ret = 0;
 	} else {
 		pr_err("Unknown state in code %d\n", (int)core->tc->task_state);
@@ -1492,9 +1491,8 @@ static inline int stage_participants(int next_stage)
 		return 1;
 	case CR_STATE_FORKING:
 		return task_entries->nr_tasks + task_entries->nr_helpers;
-	case CR_STATE_RESTORE_FS:
-		return task_entries->nr_tasks + task_entries->nr_helpers;
 	case CR_STATE_RESTORE:
+		return task_entries->nr_threads + task_entries->nr_helpers;
 	case CR_STATE_RESTORE_SIGCHLD:
 		return task_entries->nr_threads;
 	case CR_STATE_RESTORE_CREDS:
@@ -1710,10 +1708,6 @@ static int restore_root_task(struct pstree_item *init)
 		goto out;
 
 	timing_stop(TIME_FORK);
-
-	ret = restore_switch_stage(CR_STATE_RESTORE_FS);
-	if (ret < 0)
-		goto out_kill;
 
 	ret = restore_switch_stage(CR_STATE_RESTORE);
 	if (ret < 0)
@@ -2855,11 +2849,6 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 
 	if (restore_fs(current))
 		goto err;
-
-	/* restore_finish_stage has task_entries hardcoded. Since we moved it
-	 * above, the current pointer is invalid so we need to reset it. */
-	task_entries = task_args->task_entries;
-	restore_finish_stage(CR_STATE_RESTORE_FS);
 
 	if (pstree_wait_helpers() < 0)
 		goto err;
