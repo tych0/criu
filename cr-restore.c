@@ -698,6 +698,7 @@ err:
 	return ret;
 }
 
+#if 0
 static int pstree_wait_helpers()
 {
 	struct pstree_item *pi;
@@ -726,6 +727,7 @@ static int pstree_wait_helpers()
 
 	return 0;
 }
+#endif
 
 static int open_cores(int pid, CoreEntry *leader_core)
 {
@@ -1028,6 +1030,8 @@ static inline int fork_with_pid(struct pstree_item *item)
 		 */
 		item->rst->cg_set = item->parent->rst->cg_set;
 		ca.core = NULL;
+		ca.clone_flags |= SIGCHLD;
+pr_err("handler clone_flags: %lx\n", ca.clone_flags);
 	}
 
 	ret = -1;
@@ -2848,9 +2852,6 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	 */
 
 	if (restore_fs(current))
-		goto err;
-
-	if (pstree_wait_helpers() < 0)
 		goto err;
 
 	close_image_dir();
