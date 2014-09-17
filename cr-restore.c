@@ -95,6 +95,9 @@ static int prepare_posix_timers(int pid, CoreEntry *core);
 static int prepare_signals(int pid, CoreEntry *core);
 
 static int root_as_sibling;
+static pid_t *helpers = NULL;
+static unsigned long helpers_pos = 0;
+static int n_helpers = 0;
 
 static int crtools_prepare_shared(void)
 {
@@ -698,30 +701,30 @@ err:
 	return ret;
 }
 
-static int collect_helper_pids(pid_t **pids, int *n_pids)
+static int collect_helper_pids()
 {
 	struct pstree_item *pi;
 
 	list_for_each_entry(pi, &current->children, sibling) {
-		void *m;
 
 		if (pi->state != TASK_HELPER)
 			continue;
 
-		if (*pids) {
-			m = xrealloc(*pids, sizeof(**pids) * ++(*n_pids));
+		if (helpers) {
+			void *m;
+			m = rst_mem_grow_last(sizeof(*helpers) * ++n_helpers, RM_PRIVATE);
 			if (!m)
 				return -1;
-			*pids = m;
+			helpers = m;
 		} else {
-			m = xmalloc(sizeof(*pids));
-			if (!m)
+			helpers_pos = rst_mem_cpos(RM_PRIVATE);
+			helpers = rst_mem_alloc(sizeof(*helpers), RM_PRIVATE);
+			if (!helpers)
 				return -1;
-			*pids = m;
-			*n_pids = 1;
+			n_helpers = 1;
 		}
 
-		(*pids)[*n_pids - 1] = pi->pid.virt;
+		helpers[n_helpers - 1] = pi->pid.virt;
 	}
 
 	return 0;
@@ -789,6 +792,9 @@ static int restore_one_alive_task(int pid, CoreEntry *core)
 		return -1;
 
 	if (prepare_rlimits(pid, core) < 0)
+		return -1;
+
+	if (collect_helper_pids() < 0)
 		return -1;
 
 	return sigreturn_restore(pid, core);
@@ -2539,9 +2545,6 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	struct vm_area_list *vmas = &current->rst->vmas;
 	int i;
 
-	pid_t *helpers = NULL;
-	int n_helpers = 0;
-
 	pr_info("Restore via sigreturn\n");
 
 	/* pr_info_vma_list(&self_vma_list); */
@@ -2688,30 +2691,6 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	if (rst_mem_remap(mem))
 		goto err;
 
-	if (collect_helper_pids(&helpers, &n_helpers)) {
-		pr_err("collecting helpers failed\n");
-		goto err;
-	}
-
-	task_args->n_helpers = n_helpers;
-
-	if (n_helpers > 0) {
-		int sz = n_helpers * sizeof(*task_args->helpers);
-
-pr_err("before my alloc\n");
-		task_args->helpers = rst_mem_alloc(sz, RM_PRIVATE);
-pr_err("after my alloc\n");
-		if (!task_args->helpers) {
-			free(helpers);
-			goto err;
-		}
-
-		memcpy(task_args->helpers, helpers, sz);
-		free(helpers);
-	} else
-		task_args->helpers = NULL;
-
-
 	task_args->task_entries = rst_mem_remap_ptr(task_entries_pos, RM_SHREMAP);
 
 	task_args->rst_mem = mem;
@@ -2743,6 +2722,9 @@ pr_err("after my alloc\n");
 
 	task_args->tcp_socks_nr = rst_tcp_socks_nr;
 	task_args->tcp_socks = rst_mem_remap_ptr(tcp_socks, RM_PRIVATE);
+
+	task_args->n_helpers = n_helpers;
+	task_args->helpers = rst_mem_remap_ptr((unsigned long) helpers, RM_PRIVATE);
 
 	/*
 	 * Arguments for task restoration.
