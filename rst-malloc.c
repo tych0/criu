@@ -158,22 +158,6 @@ void *rst_mem_alloc(unsigned long size, int type)
 	return ret;
 }
 
-void *rst_mem_grow_last(unsigned long size, int type)
-{
-	struct rst_mem_type_s *t = &rst_mems[type];
-	unsigned long last_sz = t->last;
-	void *last_mem = t->free_mem;
-
-	/* we can ignore this since we're just extending the old region, and
-	 * we're only adding allocations; this makes the function look kind of
-	 * like realloc */
-	if (!rst_mem_alloc(size, type))
-		return NULL;
-
-	t->last = last_sz + size;
-	return last_mem;
-}
-
 void rst_mem_free_last(int type)
 {
 	struct rst_mem_type_s *t = &rst_mems[type];

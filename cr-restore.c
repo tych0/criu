@@ -712,10 +712,9 @@ static int collect_helper_pids()
 
 		if (helpers) {
 			void *m;
-			m = rst_mem_grow_last(sizeof(*helpers) * ++n_helpers, RM_PRIVATE);
+			m = rst_mem_alloc(sizeof(*helpers) * ++n_helpers, RM_PRIVATE);
 			if (!m)
 				return -1;
-			helpers = m;
 		} else {
 			helpers_pos = rst_mem_cpos(RM_PRIVATE);
 			helpers = rst_mem_alloc(sizeof(*helpers), RM_PRIVATE);
@@ -2724,7 +2723,10 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	task_args->tcp_socks = rst_mem_remap_ptr(tcp_socks, RM_PRIVATE);
 
 	task_args->n_helpers = n_helpers;
-	task_args->helpers = rst_mem_remap_ptr((unsigned long) helpers, RM_PRIVATE);
+	if (n_helpers > 0)
+		task_args->helpers = rst_mem_remap_ptr(helpers_pos, RM_PRIVATE);
+	else
+		task_args->helpers = NULL;
 
 	/*
 	 * Arguments for task restoration.
