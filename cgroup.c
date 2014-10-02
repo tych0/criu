@@ -1080,8 +1080,7 @@ void fini_cgroup(void)
 static int restore_cgroup_prop(const CgroupPropEntry * cg_prop_entry_p,
 			       char *path, int off)
 {
-	FILE *f;
-	int cg;
+	int cg, f;
 
 	if (!cg_prop_entry_p->value) {
 		pr_err("cg_prop_entry->value was empty when should have had a value");
@@ -1094,19 +1093,19 @@ static int restore_cgroup_prop(const CgroupPropEntry * cg_prop_entry_p,
 	}
 
 	cg = get_service_fd(CGROUP_YARD);
-	f = fopenat(cg, path, "w+");
-	if (!f) {
+	f = openat(cg, path, O_WRONLY);
+	if (f < 0) {
 		pr_perror("Failed opening %s for writing", path);
 		return -1;
 	}
 
-	if (fprintf(f, "%s", cg_prop_entry_p->value) < 0) {
-		fclose(f);
+	if (write(f, cg_prop_entry_p->value, strlen(cg_prop_entry_p->value)) < 0) {
+		close(f);
 		pr_err("Failed writing %s to %s\n", cg_prop_entry_p->value, path);
 		return -1;
 	}
 
-	if (fclose(f) != 0) {
+	if (close(f) != 0) {
 		pr_perror("Failed closing %s", path);
 		return -1;
 	}
