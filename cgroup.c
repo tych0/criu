@@ -886,7 +886,7 @@ static int find_value(const char *controller, const char *path, const char *prop
 			*pos = 0;
 			snprintf(prefix, PATH_MAX, "%s/%s", controller, my_path);
 		} else {
-			snprintf(fpath, PATH_MAX, "%s", controller);
+			snprintf(prefix, PATH_MAX, "%s", controller);
 		}
 		snprintf(fpath, PATH_MAX, "%s/%s", prefix, prop);
 
@@ -963,6 +963,17 @@ static int copy_special_cg_props(const char *controller, char *path)
 			const char *prop = special_cpuset_props[i];
 			if (find_value(controller, path, prop, buf, prefix, missing_path) < 0)
 				return -1;
+
+			/*
+			 * If the path that was missing is "/", we should skip
+			 * copying this property, since cpuset won't allow us
+			 * to write to it because there are already processes
+			 * there (e.g. init). The root cg had no restrictions
+			 * on cpuset resources here, so ignoring this and
+			 * writing nothing is safe.
+			 */
+			if (strcmp(missing_path, "/") == 0)
+				continue;
 
 			if (copy_recursive(prefix, missing_path, prop, buf) < 0) {
 				pr_err("copying prop %s failed\n", prop);
