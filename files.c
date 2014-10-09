@@ -222,6 +222,8 @@ static int fill_fd_params(struct parasite_ctl *ctl, int fd, int lfd,
 	if (parse_fdinfo(lfd, FD_TYPES__UND, NULL, &fdinfo))
 		return -1;
 
+	pr_info("TYCHO: real pid %d virt %d fd %d\n", ctl->pid.real, ctl->pid.virt, fd);
+
 	p->fs_type	= fsbuf.f_type;
 	p->ctl		= ctl;
 	p->fd		= fd;

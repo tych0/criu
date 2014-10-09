@@ -88,8 +88,48 @@ static int dump_one_netlink_fd(int lfd, u32 id, const struct fd_parms *p)
 	ne.id = id;
 	ne.ino = p->stat.st_ino;
 
-	if (!can_dump_netlink_sk(lfd))
+	if (!can_dump_netlink_sk(lfd)) {
+		int len;
+		char buf[4096];
+		struct iovec iov = { buf, sizeof(buf) };
+		struct sockaddr_nl sa;
+		struct msghdr msg;
+		struct nlmsghdr *nh;
+
+		nh = (struct nlmsghdr *) buf;
+		memset(buf, 0, sizeof(buf));
+
+		pr_err("failed dumping lfd: %d, id %u\n", lfd, id);
+
+		msg.msg_name = &sa;
+		msg.msg_namelen = sizeof(sa),
+		msg.msg_iov = &iov,
+		msg.msg_iovlen = 1,
+		msg.msg_control = NULL,
+		msg.msg_controllen = 0,
+		msg.msg_flags = 0;
+
+		len = recvmsg(lfd, &msg, 0);
+		pr_err("received message of length %d, %d\n", len, NLMSG_OK (nh, len));
+		pr_err("nlmsg_len: %d, nlmsg_type: %d, nlmsg_seq %d, nlmsg_pid %d\n", nh->nlmsg_len, nh->nlmsg_type, nh->nlmsg_seq, nh->nlmsg_pid);
+
+		for (nh = (struct nlmsghdr *) buf; NLMSG_OK (nh, len); nh = NLMSG_NEXT (nh, len)) {
+			/* The end of multipart message. */
+			if (nh->nlmsg_type == NLMSG_DONE) {
+				pr_err("NLMSG_DONE\n");
+				break;
+			}
+
+			if (nh->nlmsg_type == NLMSG_ERROR) {
+				pr_err("NLMSG_ERROR\n");
+				break;
+			}
+
+			pr_err("nl message of type: %d\n", nh->nlmsg_type);
+		}
+
 		goto err;
+	}
 
 	if (sk) {
 		BUG_ON(sk->sd.already_dumped);
