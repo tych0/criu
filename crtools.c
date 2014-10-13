@@ -473,6 +473,38 @@ int main(int argc, char *argv[], char *envp[])
 		pr_info("Will do snapshot from %s\n", opts.img_parent);
 
 	if (!strcmp(argv[optind], "dump")) {
+		/*
+		 * If the task to dump (e.g. an LXC container) has any netlink
+		 * KOBJECT_UEVENT socket open and the _diag modules aren't
+		 * loaded is dumped, criu will freeze the task and then the
+		 * kernel will send it messages on the socket, and then we will
+		 * fail to dump because the socket has pending data. The Real
+		 * Solution is to dump this pending data, but we just modprobe
+		 * things beforehand for now so that the first dump doesn't
+		 * fail.
+		 *
+		 * We ignore failure since these could be compiled directly
+		 * in, instead of being kernel modules.
+		 */
+		char *modules[] = {
+			"netlink_diag",
+			"af_packet_diag",
+			"udp_diag",
+			"tcp_diag",
+			"unix_diag",
+			NULL,
+		};
+		int i;
+		char *args[2] = {
+			"modprobe",
+			NULL
+		};
+
+		for (i = 0; modules[i]; i++) {
+			args[1] = modules[i];
+			cr_system(-1, -1, -1, args[0], args);
+		}
+
 		if (!tree_id)
 			goto opt_pid_missing;
 		return cr_dump_tasks(tree_id);
