@@ -311,8 +311,21 @@ static int dump_one_file(struct parasite_ctl *ctl, int fd, int lfd, struct fd_op
 	if (S_ISSOCK(p.stat.st_mode))
 		return dump_socket(&p, lfd, img);
 
-	if (S_ISCHR(p.stat.st_mode))
+	if (S_ISCHR(p.stat.st_mode)) {
+		char path[PATH_MAX];
+		ssize_t ret;
+
+		sprintf(path, "/proc/self/fd/%d", lfd);
+		ret = readlink(path, path, sizeof(path));
+		if (ret < 0)
+			path[0] = 0;
+		else
+			path[ret] = 0;
+
+		pr_info("dumping chr dev %s\n", path);
+
 		return dump_chrdev(&p, lfd, img);
+	}
 
 	if (p.fs_type == ANON_INODE_FS_MAGIC) {
 		char link[32];
