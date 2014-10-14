@@ -50,6 +50,7 @@ int run_scripts(enum script_actions act)
 	}
 
 	unsetenv("CRTOOLS_SCRIPT_ACTION");
+	unsetenv("CRTOOLS_IMAGE_DIR");
 	return ret;
 }
 
