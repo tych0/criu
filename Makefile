@@ -250,7 +250,7 @@ criu-$(CRTOOLSVERSION).tar.bz2:
 		v$(CRTOOLSVERSION) | bzip2 > $@
 .PHONY: dist tar
 
-install: $(PROGRAM) $(CRIU-LIB) install-man
+install: $(PROGRAM) $(CRIU-LIB)
 	$(E) "  INSTALL " $(PROGRAM)
 	$(Q) mkdir -p $(DESTDIR)$(SBINDIR)
 	$(Q) install -m 755 $(PROGRAM) $(DESTDIR)$(SBINDIR)

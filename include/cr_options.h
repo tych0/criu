@@ -58,6 +58,7 @@ struct cr_options {
 	char			*new_global_cg_root;
 	struct list_head	new_cgroup_roots;
 	bool			aufs;		/* auto-deteced, not via cli */
+	char			*script_data;
 };
 
 extern struct cr_options opts;

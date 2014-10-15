@@ -187,6 +187,7 @@ int main(int argc, char *argv[], char *envp[])
 		{ "exec-cmd", no_argument, 0, 1059},
 		{ "manage-cgroups", no_argument, 0, 1060},
 		{ "cgroup-root", required_argument, 0, 1061},
+		{ "script-data", required_argument, 0, 1062},
 		{ },
 	};
 
@@ -392,6 +393,9 @@ int main(int argc, char *argv[], char *envp[])
 					return -1;
 			}
 			break;
+		case 1062:
+			opts.script_data = optarg;
+			break;
 		case 'M':
 			{
 				char *aux;
@@ -591,6 +595,8 @@ usage:
 "  --veth-pair IN=OUT    map inside veth device name to outside one\n"
 "  --link-remap          allow to link unlinked files back when possible\n"
 "  --action-script FILE  add an external action script\n"
+"  --script-data         A string of data to pass to action scripts as the\n"
+"                        CRTOOLS_SCRIPT_DATA environment variable.\n"
 "  -j|--" OPT_SHELL_JOB "        allow to dump and restore shell jobs\n"
 "  -l|--" OPT_FILE_LOCKS "       handle file locks, for safety, only used for container\n"
 "  -L|--libdir           path to a plugin directory (by default " CR_PLUGIN_DEFAULT ")\n"

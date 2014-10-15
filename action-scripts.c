@@ -39,6 +39,11 @@ int run_scripts(enum script_actions act)
 		return -1;
 	}
 
+	if (opts.script_data && setenv("CRTOOLS_SCRIPT_DATA", opts.script_data, 1)) {
+		pr_perror("Can't set CRTOOLS_SCRIPT_DATA=%s", opts.script_data);
+		return -1;
+	}
+
 	list_for_each_entry(script, &opts.scripts, node) {
 		if (script->path == SCRIPT_RPC_NOTIFY) {
 			pr_debug("\tRPC\n");
@@ -51,6 +56,9 @@ int run_scripts(enum script_actions act)
 
 	unsetenv("CRTOOLS_SCRIPT_ACTION");
 	unsetenv("CRTOOLS_IMAGE_DIR");
+	unsetenv("CRTOOLS_SCRIPT_DATA");
+	if (ret)
+		pr_err("Script exited with code %d\n", ret);
 	return ret;
 }
 
