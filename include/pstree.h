@@ -6,6 +6,7 @@
 #include "image.h"
 #include "rst_info.h"
 #include "protobuf/core.pb-c.h"
+#include "protobuf/pstree.pb-c.h"
 
 /*
  * That's the init process which usually inherit
