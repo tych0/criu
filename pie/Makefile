@@ -48,7 +48,7 @@ $(obj)/$(PIELDS): $(obj)/$(PIELDS).in
 
 $(obj)/%.built-in.bin.o: $(obj)/%.built-in.o $(obj)/$(PIELDS)
 	$(E) "  GEN     " $@
-	$(Q) $(LD) -T $(obj)/$(PIELDS) -o $@ $<
+	$(Q) $(LD) -T $(obj)/$(PIELDS) -o $@ $< --static --start-group -L/usr/lib/x86_64-linux-gnu -L/lib/x86_64-linux-gnu -lapparmor -lpthread -lc -L/usr/lib/gcc/x86_64-linux-gnu/4.9 -lgcc_eh --end-group
 
 $(obj)/%.built-in.bin: $(obj)/%.built-in.bin.o
 	$(E) "  GEN     " $@

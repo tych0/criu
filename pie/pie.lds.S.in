@@ -12,6 +12,14 @@ SECTIONS
 		. = ALIGN(32);
 		*(.got*)
 		. = ALIGN(32);
+		*(.tbss*)
+		. = ALIGN(32);
+		*(.tdata*)
+		. = ALIGN(32);
+		*(__libc_freeres_ptrs*)
+		. = ALIGN(32);
+		*(COMMON)
+		. = ALIGN(32);
 	} =0x00000000,
 
 	/DISCARD/ : {

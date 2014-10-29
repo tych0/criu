@@ -1,3 +1,9 @@
+enum lsmtype {
+	NO_LSM		= 0;
+	SELINUX		= 1;
+	APPARMOR	= 2;
+}
+
 message pstree_entry {
 	required uint32			pid		= 1;
 	required uint32			ppid		= 2;

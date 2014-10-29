@@ -80,4 +80,6 @@ message core_entry {
 	optional task_core_entry	tc		= 3;
 	optional task_kobj_ids_entry	ids		= 4;
 	optional thread_core_entry	thread_core	= 5;
+
+	optional string			lsm_profile	= 9;
 }

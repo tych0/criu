@@ -74,6 +74,7 @@
 #include "action-scripts.h"
 #include "aio.h"
 #include "security.h"
+#include "lsm.h"
 
 #include "parasite-syscall.h"
 
@@ -1934,6 +1935,9 @@ int cr_restore_tasks(void)
 	if (prepare_pstree() < 0)
 		goto err;
 
+	if (validate_lsm() < 0)
+		goto err;
+
 	if (crtools_prepare_shared() < 0)
 		goto err;
 
@@ -2616,6 +2620,9 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	unsigned long aio_rings;
 	MmEntry *mm = rsti(current)->mm;
 
+	char *lsm = NULL;
+	unsigned long lsm_pos = 0;
+
 	struct vm_area_list self_vmas;
 	struct vm_area_list *vmas = &rsti(current)->vmas;
 	int i;
@@ -2678,6 +2685,13 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 		goto err_nv;
 
 	memcpy(tcp_socks_mem, rst_tcp_socks, rst_tcp_socks_len());
+
+	if (core->lsm_profile) {
+		lsm_pos = rst_mem_cpos(RM_PRIVATE);
+		lsm = rst_mem_alloc(strlen(core->lsm_profile) + 1, RM_PRIVATE);
+
+		strcpy(lsm, core->lsm_profile);
+	}
 
 	/*
 	 * Copy timerfd params for restorer args, we need to proceed
@@ -2821,6 +2835,14 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 		task_args->helpers = rst_mem_remap_ptr(helpers_pos, RM_PRIVATE);
 	else
 		task_args->helpers = NULL;
+
+	if (core->lsm_profile) {
+		pr_info("TYCHO: lsm_profile %d %p\n", pid, core->lsm_profile);
+		//pr_info("TYCHO: lsm_profile %d %s\n", pid, lsm);
+		task_args->lsm_profile = rst_mem_remap_ptr(lsm_pos, RM_PRIVATE);
+	} else {
+		task_args->lsm_profile = NULL;
+	}
 
 	/*
 	 * Arguments for task restoration.

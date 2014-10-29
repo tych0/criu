@@ -74,6 +74,7 @@
 #include "action-scripts.h"
 #include "aio.h"
 #include "security.h"
+#include "lsm.h"
 
 #include "asm/dump.h"
 
@@ -997,6 +998,9 @@ static int collect_task(struct pstree_item *item)
 	}
 
 	if (pstree_alloc_cores(item))
+		goto err_close;
+
+	if (collect_lsm_profile(item) < 0)
 		goto err_close;
 
 	pr_info("Collected %d in %d state\n", item->pid.real, item->state);

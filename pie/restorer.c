@@ -36,6 +36,14 @@
 
 #include "asm/restorer.h"
 
+#ifdef CONFIG_HAS_APPARMOR
+#include <sys/apparmor.h>
+#endif
+
+#ifdef CONFIG_HAS_SELINUX
+#include <selinux/selinux.h>
+#endif
+
 #ifndef PR_SET_PDEATHSIG
 #define PR_SET_PDEATHSIG 1
 #endif
@@ -740,6 +748,32 @@ static int wait_helpers(struct task_restore_args *task_args)
 	return 0;
 }
 
+static int lsm_set_label(char *label)
+{
+	int ret = -1;
+
+	if (!label)
+		return 0;
+
+#ifdef CONFIG_HAS_APPARMOR
+	pr_info("restoring aa profile %s\n", label);
+	ret = aa_change_profile(label);
+	pr_info("aa_change_profile() = %d\n", ret);
+#endif
+// TODO -lselinux
+#ifdef CONFIG_HAS_SELINUX
+#if 0
+	if (ret) {
+		if(strcmp(label, "unconfined"))
+			ret = setcon_raw(label);
+		else
+			ret = 0;
+	}
+#endif
+#endif
+	return ret;
+}
+
 /*
  * The main routine to restore task via sigreturn.
  * This one is very special, we never return there
@@ -1160,6 +1194,17 @@ long __export_restore_task(struct task_restore_args *args)
 	ret = ret || restore_dumpable_flag(&args->mm);
 	ret = ret || restore_pdeath_sig(args->t);
 
+#if defined(CONFIG_HAS_APPARMOR) || defined(CONFIG_HAS_SELINUX)
+	if (args->lsm_profile)
+		pr_info("has lsm profile %s\n", args->lsm_profile);
+	else
+		pr_info("not restoring lsm profile\n");
+	if (lsm_set_label(args->lsm_profile) < 0) {
+		pr_err("lsm_set_label failed\n");
+		goto core_restore_end;
+	}
+#endif
+
 	futex_set_and_wake(&thread_inprogress, args->nr_threads);
 
 	restore_finish_stage(CR_STATE_RESTORE_CREDS);
@@ -1197,6 +1242,7 @@ long __export_restore_task(struct task_restore_args *args)
 	 */
 	new_sp = (long)rt_sigframe + SIGFRAME_OFFSET;
 
+	pr_info("final goodbye\n");
 	/*
 	 * Prepare the stack and call for sigreturn,
 	 * pure assembly since we don't need any additional
