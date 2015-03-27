@@ -59,6 +59,7 @@ struct cr_options {
 	bool			manage_cgroups;
 	char			*new_global_cg_root;
 	struct list_head	new_cgroup_roots;
+	bool			enable_external_masters;
 	bool			aufs;		/* auto-deteced, not via cli */
 };
 

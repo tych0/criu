@@ -566,6 +566,9 @@ static struct mount_info *find_fsroot_mount_for(struct mount_info *bm)
 	return NULL;
 }
 
+struct mount_info *external_mounts = NULL;
+static int try_resolve_external_sharing(struct mount_info *m);
+
 static int validate_mounts(struct mount_info *info, bool for_dump)
 {
 	struct mount_info *m, *t;
@@ -577,6 +580,11 @@ static int validate_mounts(struct mount_info *info, bool for_dump)
 
 		if (m->shared_id && validate_shared(m))
 			return -1;
+
+		if (m->master_id && opts.enable_external_masters) {
+			if (try_resolve_external_sharing(m) == 0)
+				continue;
+		}
 
 		/*
 		 * Mountpoint can point to / of an FS. In that case this FS
@@ -646,10 +654,11 @@ static int collect_shared(struct mount_info *info)
 	struct mount_info *m, *t;
 
 	/*
-	 * If we have a shared mounts, both master
-	 * slave targets are to be present in mount
-	 * list, otherwise we can't be sure if we can
-	 * recreate the scheme later on restore.
+	 * If we have a shared mounts, both master slave targets are to be
+	 * present in mount list, otherwise we can't be sure if we can
+	 * recreate the scheme later on restore. If --enable-external-masters
+	 * is supplied, we assume that the scheme will be present on restore
+	 * and allow the mounts to be dumped.
 	 */
 	for (m = info; m; m = m->next) {
 		bool need_share, need_master;
@@ -676,10 +685,28 @@ static int collect_shared(struct mount_info *info)
 		}
 
 		if (need_master && m->parent) {
-			pr_err("Mount %d (master_id: %d shared_id: %d) "
-			       "has unreachable sharing\n", m->mnt_id,
-				m->master_id, m->shared_id);
-			return -1;
+			if (opts.enable_external_masters) {
+				struct mount_info *pm;
+				bool found = false;
+
+				for (pm = external_mounts; pm->next != NULL; pm = pm->next) {
+					if (pm->shared_id == m->master_id) {
+						found = true;
+						break;
+					}
+				}
+
+				if (!found) {
+					pr_err("couldn't find sharing for %d "
+						"(master_id: %d shared_id: %d)",
+						m->mnt_id, m->master_id, m->shared_id);
+				}
+			} else {
+				pr_err("Mount %d (master_id: %d shared_id: %d) "
+				       "has unreachable sharing. Try --enable-external-masters.\n", m->mnt_id,
+					m->master_id, m->shared_id);
+				return -1;
+			}
 		}
 
 		/* Search bind-mounts */
@@ -1159,6 +1186,12 @@ static int dump_one_mountpoint(struct mount_info *pm, struct cr_img *img)
 	me.has_shared_id	= true;
 	me.master_id		= pm->master_id;
 	me.has_master_id	= true;
+
+	if (pm->external_master) {
+		me.external_master	= true;
+		me.has_external_master  = true;
+	}
+
 	if (pm->need_plugin) {
 		me.has_with_plugin = true;
 		me.with_plugin = true;
@@ -1302,7 +1335,7 @@ again:
 	if (!progress) {
 		struct mount_info *m;
 
-		pr_err("A few mount points can't be mounted");
+		pr_err("A few mount points can't be mounted\n");
 		list_for_each_entry(m, &postpone2, postpone) {
 			pr_err("%d:%d %s %s %s\n", m->mnt_id,
 				m->parent_mnt_id, m->root,
@@ -1475,17 +1508,19 @@ static int do_new_mount(struct mount_info *mi)
 		return -1;
 
 	if (mount(src, mi->mountpoint, tp->name,
-			mi->flags & (~MS_SHARED), mi->options) < 0) {
+			mi->flags & ~(MS_SLAVE | MS_SHARED), mi->options) < 0) {
 		pr_perror("Can't mount at %s", mi->mountpoint);
 		return -1;
 	}
 
-	if (restore_shared_options(mi, 0, mi->shared_id, 0))
+	if (restore_shared_options(mi, 0, mi->shared_id, mi->flags & MS_SLAVE || mi->external_master))
 		return -1;
 
 	mi->mounted = true;
 
-	if (tp->restore && tp->restore(mi))
+	// If there is an external master, the content of the mount comes from
+	// there; otherwise, we restore it as usual.
+	if (!mi->external_master && tp->restore && tp->restore(mi))
 		return -1;
 
 	return 0;
@@ -1617,7 +1652,7 @@ static int do_mount_one(struct mount_info *mi)
 	if (mi->mounted)
 		return 0;
 
-	if (!can_mount_now(mi)) {
+	if (!mi->external_master && !can_mount_now(mi)) {
 		pr_debug("Postpone slave %s\n", mi->mountpoint);
 		return 1;
 	}
@@ -1858,6 +1893,11 @@ static int collect_mnt_from_image(struct mount_info **pms, struct ns_id *nsid)
 		pm->need_plugin		= me->with_plugin;
 		pm->is_ns_root		= is_root(me->mountpoint);
 
+		if (me->has_external_master)
+			pm->external_master = pm->external_master;
+		else
+			pm->external_master = false;
+
 		/* FIXME: abort unsupported early */
 		pm->fstype		= decode_fstype(me->fstype);
 
@@ -2065,6 +2105,8 @@ static int prepare_roots_yard(void)
 	return 0;
 }
 
+static int collect_external_mounts();
+
 static int populate_mnt_ns(struct mount_info *mis)
 {
 	struct mount_info *pms;
@@ -2075,6 +2117,9 @@ static int populate_mnt_ns(struct mount_info *mis)
 
 	pms = mnt_build_tree(mis);
 	if (!pms)
+		return -1;
+
+	if (collect_external_mounts() < 0)
 		return -1;
 
 	if (collect_shared(mis))
@@ -2312,6 +2357,48 @@ int mntns_get_root_by_mnt_id(int mnt_id)
 	return mntns_get_root_fd(mntns);
 }
 
+// We collect the mounts in /proc/self in order to find the master node for
+// shared mounts.
+static int collect_external_mounts()
+{
+	external_mounts = parse_mountinfo(getpid(), NULL);
+	if (!external_mounts)
+		return -1;
+
+	return 0;
+}
+
+static int try_resolve_external_sharing(struct mount_info *m)
+{
+	struct mount_info *pm;
+
+	for (pm = external_mounts; pm->next != NULL; pm = pm->next) {
+		if (pm->shared_id == m->master_id) {
+			int size, ret;
+			char *p;
+
+			size = strlen(pm->mountpoint + 1) + strlen(m->root) + 1;
+			p = xmalloc(sizeof(char) * size);
+			if (!p)
+				return -1;
+
+			ret = snprintf(p, size+1, "%s%s", pm->mountpoint + 1, m->root);
+			if (ret < 0 || ret >= size) {
+				free(p);
+				return -1;
+			}
+
+			xfree(m->source);
+			m->source = p;
+			m->external_master = true;
+			m->flags |= MS_BIND;
+			return 0;
+		}
+	}
+
+	return -1;
+}
+
 static int collect_mntns(struct ns_id *ns, void *oarg)
 {
 	struct mount_info *pms;
@@ -2338,6 +2425,8 @@ int collect_mnt_namespaces(bool for_dump)
 	if (for_dump && need_to_validate) {
 		ret = -1;
 
+		if (collect_external_mounts())
+			goto err;
 		if (collect_shared(mntinfo))
 			goto err;
 		if (validate_mounts(mntinfo, true))

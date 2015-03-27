@@ -203,6 +203,7 @@ int main(int argc, char *argv[], char *envp[])
 		{ "cgroup-root", required_argument, 0, 1061},
 		{ "inherit-fd", required_argument, 0, 1062},
 		{ "feature", required_argument, 0, 1063},
+		{ "enable-external-masters", no_argument, 0, 1064},
 		{ },
 	};
 
@@ -415,6 +416,9 @@ int main(int argc, char *argv[], char *envp[])
 		case 1063:
 			if (check_add_feature(optarg) < 0)
 				return 1;
+			break;
+		case 1064:
+			opts.enable_external_masters = true;
 			break;
 		case 'M':
 			{
@@ -637,6 +641,8 @@ usage:
 "  --force-irmap         force resolving names for inotify/fsnotify watches\n"
 "  -M|--ext-mount-map KEY:VALUE\n"
 "                        add external mount mapping\n"
+"  --enable-external-masters\n"
+"                        Allow mounts with external masters\n"
 "  --manage-cgroups      dump or restore cgroups the process is in\n"
 "  --cgroup-root [controller:]/newroot\n"
 "                        change the root cgroup the controller will be\n"
