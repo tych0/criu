@@ -151,6 +151,7 @@ generate_test_list()
 		static/dumpable01
 		static/dumpable02
 		static/deleted_dev
+		static/external_shared_mounts
 	"
 
 	#
@@ -326,6 +327,7 @@ mntns_root_bind
 mntns_rw_ro_rw
 sockets00
 cow01
+external_shared_mounts
 "
 
 CRIU_CPT=$CRIU

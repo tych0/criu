@@ -179,6 +179,7 @@
 /live/static/file_locks05
 /live/static/mlock_setuid
 /live/static/mntns_root_bind
+/live/static/external_shared_mounts
 /live/streaming/fifo_dyn
 /live/streaming/fifo_loop
 /live/streaming/file_aio
