@@ -35,4 +35,5 @@ message mnt_entry {
 
 	optional bool		with_plugin		= 12;
 	optional bool		ext_mount		= 13;
+	optional bool		internal_sharing	= 14;
 }

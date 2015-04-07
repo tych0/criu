@@ -204,6 +204,7 @@ int main(int argc, char *argv[], char *envp[])
 		{ "inherit-fd",		required_argument,	0, 1062	},
 		{ "feature",		required_argument,	0, 1063	},
 		{ "skip-mnt",		required_argument,	0, 1064},
+		{ "enable-external-sharing", no_argument, 	0, 1065 },
 		{ },
 	};
 
@@ -420,6 +421,9 @@ int main(int argc, char *argv[], char *envp[])
 		case 1064:
 			if (!add_skip_mount(optarg))
 				return 1;
+			break;
+		case 1065:
+			opts.enable_external_sharing = true;
 			break;
 		case 'M':
 			{
@@ -649,6 +653,8 @@ usage:
 "                        add external mount mapping\n"
 "  -M|--ext-mount-map auto\n"
 "                        attempt to autodetect external mount mapings\n"
+"  --enable-external-sharing\n"
+"                        allow autoresolving mounts with external sharing\n"
 "  --manage-cgroups      dump or restore cgroups the process is in\n"
 "  --cgroup-root [controller:]/newroot\n"
 "                        change the root cgroup the controller will be\n"
