@@ -790,33 +790,37 @@ static int restore_one_alive_task(int pid, CoreEntry *core)
 	rst_mem_switch_to_private();
 
 	if (prepare_fds(current))
-		return -1;
+		goto err;
 
 	if (prepare_file_locks(pid))
-		return -1;
+		goto err;
 
 	if (open_vmas(pid))
-		return -1;
+		goto err;
 
 	if (open_cores(pid, core))
-		return -1;
+		goto err;
 
 	if (prepare_signals(pid, core))
-		return -1;
+		goto err;
 
 	if (prepare_posix_timers(pid, core))
-		return -1;
+		goto err;
 
 	if (prepare_rlimits(pid, core) < 0)
-		return -1;
+		goto err;
 
 	if (collect_helper_pids() < 0)
-		return -1;
+		goto err;
 
 	if (inherit_fd_fini() < 0)
-		return -1;
+		goto err;
 
 	return sigreturn_restore(pid, core);
+
+err:
+	futex_abort_and_wake(&task_entries->nr_in_progress);
+	return -1;
 }
 
 static void zombie_prepare_signals(void)
