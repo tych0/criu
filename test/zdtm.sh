@@ -546,7 +546,11 @@ start_test()
 	(
 		# Here is no way to set FD_CLOEXEC on 3
 		exec 3>&-
-		make -C $tdir $tname.pid
+		if [ "$tname" = "mnt_ext_vanilla" ]; then
+			unshare -m make -C $tdir $tname.pid
+		else
+			make -C $tdir $tname.pid
+		fi
 	)
 
 	if [ $? -ne 0 ]; then
