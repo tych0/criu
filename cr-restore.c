@@ -24,6 +24,8 @@
 
 #include <sys/sendfile.h>
 
+#include <linux/seccomp.h>
+
 #include "ptrace.h"
 #include "compiler.h"
 #include "asm/types.h"
@@ -1058,6 +1060,7 @@ static inline int fork_with_pid(struct pstree_item *item)
 
 		item->state = ca.core->tc->task_state;
 		rsti(item)->cg_set = ca.core->tc->cg_set;
+		item->seccomp_mode = ca.core->tc->seccomp_mode;
 
 		if (item->state == TASK_DEAD)
 			rsti(item->parent)->nr_zombies++;
@@ -1672,6 +1675,17 @@ static void finalize_restore(int status)
 			goto detach;
 
 		/* Unmap the restorer blob */
+
+		/*
+		 * Suspend seccomp if necessary. We need to do this because
+		 * although seccomp is restored at the very end of the
+		 * restorer blob (and the final sigreturn is ok), here we're
+		 * doing an munmap in the process, which may be blocked by
+		 * seccomp and cause the task to be killed.
+		 */
+		if (item->seccomp_mode != SECCOMP_MODE_DISABLED && suspend_seccomp(pid) < 0)
+			pr_err("failed to suspend seccomp, restore will probably fail...\n");
+
 		ctl = parasite_prep_ctl(pid, NULL);
 		if (ctl == NULL)
 			goto detach;
@@ -2872,6 +2886,8 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 
 	task_args->nr_rings = mm->n_aios;
 	task_args->rings = rst_mem_remap_ptr(aio_rings, RM_PRIVATE);
+
+	task_args->seccomp_mode = core->tc->seccomp_mode;
 
 	task_args->n_helpers = n_helpers;
 	if (n_helpers > 0)
