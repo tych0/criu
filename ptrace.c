@@ -8,10 +8,13 @@
 #include <limits.h>
 #include <signal.h>
 
+#include <sys/ptrace.h>
 #include <sys/types.h>
 #include <sys/time.h>
 #include <sys/resource.h>
 #include <sys/wait.h>
+
+#include <linux/seccomp.h>
 
 #include "compiler.h"
 #include "asm/types.h"
@@ -30,9 +33,20 @@ int unseize_task(pid_t pid, int orig_st, int st)
 	else if (st == TASK_STOPPED) {
 		if (orig_st == TASK_ALIVE)
 			kill(pid, SIGSTOP);
-	} else if (st == TASK_ALIVE)
-		/* do nothing */ ;
-	else
+	} else if (st == TASK_ALIVE) {
+
+#ifdef CONFIG_HAS_SUSPEND_SECCOMP
+		/*
+		 * we can always do this, it is a no-op if the task did not have any
+		 * seccomp mode enabled
+		 */
+		if (ptrace(PTRACE_SUSPEND_SECCOMP, pid, NULL, 0) < 0) {
+			pr_perror("failed resuming seccomp");
+			return -1;
+		}
+#endif
+
+	} else
 		pr_err("Unknown final state %d\n", st);
 
 	return ptrace(PTRACE_DETACH, pid, NULL, NULL);
@@ -124,6 +138,19 @@ try_again:
 		pr_perror("SEIZE %d: can't read signfo", pid);
 		goto err;
 	}
+
+	if (cr.seccomp_mode != SECCOMP_MODE_DISABLED) {
+#ifdef CONFIG_HAS_SUSPEND_SECCOMP
+		if (ptrace(PTRACE_SUSPEND_SECCOMP, pid, NULL, 1) < 0) {
+			pr_perror("suspending seccomp failed");
+			goto err_stop;
+		}
+#else
+		pr_err("seccomp enabled and seccomp suspending not supported\n");
+		goto err_stop;
+#endif
+	}
+
 
 	if (SI_EVENT(si.si_code) != PTRACE_EVENT_STOP) {
 		/*

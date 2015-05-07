@@ -11,6 +11,10 @@
 # define PTRACE_SEIZE		0x4206
 #endif
 
+#ifndef PTRACE_SUSPEND_SECCOMP
+# define PTRACE_SUSPEND_SECCOMP     10
+#endif
+
 #ifndef PTRACE_INTERRUPT
 # define PTRACE_INTERRUPT	0x4207
 #endif

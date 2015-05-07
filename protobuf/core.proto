@@ -26,6 +26,8 @@ message task_core_entry {
 	optional uint32			cg_set		= 9;
 
 	optional signal_queue_entry	signals_s	= 10;
+
+	optional int32			seccomp_mode	= 11;
 }
 
 message task_kobj_ids_entry {

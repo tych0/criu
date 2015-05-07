@@ -19,6 +19,8 @@
 #include <sched.h>
 #include <sys/resource.h>
 
+#include <linux/seccomp.h>
+
 #include "protobuf.h"
 #include "protobuf/fdinfo.pb-c.h"
 #include "protobuf/fs.pb-c.h"
@@ -551,6 +553,22 @@ err:
 	return ret;
 }
 
+static int get_seccomp_state(pid_t pid, TaskCoreEntry *tc)
+{
+	struct proc_status_creds cr;
+	int ret;
+
+	ret = parse_pid_status(pid, &cr);
+	if (ret < 0)
+		return -1;
+
+	if (cr.seccomp_mode != SECCOMP_MODE_DISABLED) {
+		tc->has_seccomp_mode = true;
+		tc->seccomp_mode = cr.seccomp_mode;
+	}
+	return 0;
+}
+
 static DECLARE_KCMP_TREE(vm_tree, KCMP_VM);
 static DECLARE_KCMP_TREE(fs_tree, KCMP_FS);
 static DECLARE_KCMP_TREE(files_tree, KCMP_FILES);
@@ -669,6 +687,10 @@ static int dump_task_core_all(struct pstree_item *item,
 	pr_info("----------------------------------------\n");
 
 	ret = get_task_personality(pid, &core->tc->personality);
+	if (ret < 0)
+		goto err;
+
+	ret = get_seccomp_state(pid, core->tc);
 	if (ret < 0)
 		goto err;
 

@@ -40,6 +40,18 @@
 #define PR_SET_PDEATHSIG 1
 #endif
 
+#ifndef SECCOMP_MODE_DISABLED
+#define SECCOMP_MODE_DISABLED 0
+#endif
+
+#ifndef SECCOMP_MODE_STRICT
+#define SECCOMP_MODE_STRICT 1
+#endif
+
+#ifndef SECCOMP_MODE_FILTER
+#define SECCOMP_MODE_FILTER 2
+#endif
+
 #define sys_prctl_safe(opcode, val1, val2, val3)			\
 	({								\
 		long __ret = sys_prctl(opcode, val1, val2, val3, 0);	\
