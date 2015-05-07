@@ -24,6 +24,12 @@ struct pstree_item {
 
 	int			state;		/* TASK_XXX constants */
 
+	/*
+	 * We keep the seccomp mode here temporarily between seizing and
+	 * dumping the task to avoid parsing /proc/pid/status twice.
+	 */
+	int			seccomp_mode;
+
 	int			nr_threads;	/* number of threads */
 	struct pid		*threads;	/* array of threads */
 	CoreEntry		**core;

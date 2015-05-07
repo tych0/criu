@@ -24,6 +24,8 @@
 
 #include <sys/sendfile.h>
 
+#include <linux/seccomp.h>
+
 #include "ptrace.h"
 #include "compiler.h"
 #include "asm/types.h"
@@ -1135,7 +1137,6 @@ static inline int fork_with_pid(struct pstree_item *item)
 		goto err_unlock;
 	}
 
-
 	if (item == root_item) {
 		item->pid.real = ret;
 		pr_debug("PID: real %d virt %d\n",
@@ -1558,6 +1559,7 @@ static inline int stage_participants(int next_stage)
 	case CR_STATE_RESTORE_SIGCHLD:
 		return task_entries->nr_threads;
 	case CR_STATE_RESTORE_CREDS:
+	case CR_STATE_SECCOMP_SUSPENDED:
 		return task_entries->nr_threads;
 	}
 
@@ -1631,6 +1633,9 @@ static int attach_to_tasks(bool root_seized, enum trace_flags *flag)
 				pr_perror("waitpid(%d) failed", pid);
 				return -1;
 			}
+
+			if (suspend_seccomp(pid) < 0)
+				return -1;
 
 			ret = ptrace_stop_pie(pid, rsti(item)->breakpoint, flag);
 			if (ret < 0)
@@ -1847,13 +1852,14 @@ static int restore_root_task(struct pstree_item *init)
 	timing_stop(TIME_RESTORE);
 
 	ret = attach_to_tasks(root_as_sibling, &flag);
-
-	pr_info("Restore finished successfully. Resuming tasks.\n");
-	futex_set_and_wake(&task_entries->start, CR_STATE_COMPLETE);
+	futex_set_and_wake(&task_entries->start, CR_STATE_SECCOMP_SUSPENDED);
 
 	if (ret == 0)
 		ret = parasite_stop_on_syscall(task_entries->nr_threads,
 						__NR_rt_sigreturn, flag);
+
+	pr_info("Restore finished successfully. Resuming tasks.\n");
+	futex_set_and_wake(&task_entries->start, CR_STATE_COMPLETE);
 
 	if (clear_breakpoints())
 		pr_err("Unable to flush breakpoints\n");
@@ -2872,6 +2878,8 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 
 	task_args->nr_rings = mm->n_aios;
 	task_args->rings = rst_mem_remap_ptr(aio_rings, RM_PRIVATE);
+
+	task_args->seccomp_mode = core->tc->seccomp_mode;
 
 	task_args->n_helpers = n_helpers;
 	if (n_helpers > 0)
