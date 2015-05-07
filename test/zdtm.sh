@@ -151,6 +151,7 @@ generate_test_list()
 		static/dumpable01
 		static/dumpable02
 		static/deleted_dev
+		static/seccomp_strict
 	"
 
 	#
@@ -332,6 +333,7 @@ netns-dev
 sockets00
 cow01
 apparmor
+seccomp_strict
 "
 
 CRIU_CPT=$CRIU
