@@ -1318,6 +1318,10 @@ static struct fstype fstypes[32] = {
 		.code = FSTYPE__BINFMT_MISC,
 		.dump = binfmt_misc_dump,
 	}, {
+		.name = "autofs",
+		.code = FSTYPE__BINFMT_MISC,
+		.dump = binfmt_misc_dump,
+	}, {
 		.name = "tmpfs",
 		.code = FSTYPE__TMPFS,
 		.dump = tmpfs_dump,
