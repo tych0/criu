@@ -758,36 +758,6 @@ static int collect_helper_pids()
 	return 0;
 }
 
-/*
- * Prepare the seccomp state for the process. Note that seccomp is restored in
- * suspended mode, and then unsuspended after the restorer blob completes in
- * finalize_restore().
- */
-static int prepare_seccomp(pid_t pid, CoreEntry *core)
-{
-	if (core->tc->seccomp_mode == SECCOMP_MODE_DISABLED)
-		return 0;
-
-	pr_info("restoring seccomp mode %d for %d\n", core->tc->seccomp_mode, pid);
-
-	switch (core->tc->seccomp_mode) {
-	case SECCOMP_MODE_STRICT:
-		if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_STRICT, 0, 0, 0)) {
-			pr_perror("setting seccomp failed");
-			return -1;
-		}
-		break;
-	case SECCOMP_MODE_FILTER:
-		pr_err("seccomp mode 2 not supported\n");
-		return -1;
-	default:
-		pr_err("unknown seccomp mode %d\n", core->tc->seccomp_mode);
-		return -1;
-	}
-
-	return 0;
-}
-
 static int open_cores(int pid, CoreEntry *leader_core)
 {
 	int i, tpid;
@@ -856,9 +826,6 @@ static int restore_one_alive_task(int pid, CoreEntry *core)
 		return -1;
 
 	if (collect_helper_pids() < 0)
-		return -1;
-
-	if (prepare_seccomp(pid, core) < 0)
 		return -1;
 
 	if (inherit_fd_fini() < 0)
@@ -1174,51 +1141,6 @@ static inline int fork_with_pid(struct pstree_item *item)
 		item->pid.real = ret;
 		pr_debug("PID: real %d virt %d\n",
 				item->pid.real, item->pid.virt);
-	}
-
-	if (ca.core->tc->seccomp_mode != SECCOMP_MODE_DISABLED) {
-#ifdef CONFIG_HAS_SUSPEND_SECCOMP
-		int status;
-
-		/*
-		 * Since the process is going to restore seccomp state, we
-		 * need to temporarily suspend seccomp before we restore this
-		 * state, otherwise subsequent restore syscalls might be
-		 * blocked. seccomp is resumed at the end in finalize_restore()
-		 */
-		if (ptrace(PTRACE_ATTACH, ret, NULL, NULL) < 0) {
-			pr_perror("ptrace attach failed");
-			kill(ret, SIGKILL);
-			goto err_unlock;
-		}
-
-		if (waitpid(ret, &status, 0) < 0) {
-			pr_perror("waidpid failed");
-			kill(ret, SIGKILL);
-			goto err_unlock;
-		}
-
-		if (!WIFSTOPPED(status)) {
-			pr_err("not stopped after ptrace attach?\n");
-			kill(ret, SIGKILL);
-			goto err_unlock;
-		}
-
-		if (ptrace(PTRACE_SUSPEND_SECCOMP, ret, NULL, 1) < 0) {
-			pr_perror("seccomp suspend failed %d", ret);
-			kill(ret, SIGKILL);
-			goto err_unlock;
-		}
-
-		if (ptrace(PTRACE_DETACH, ret, NULL, NULL) < 0) {
-			pr_perror("ptrace detach failed");
-			kill(ret, SIGKILL);
-			goto err_unlock;
-		}
-#else
-		pr_err("trying to restore seccomp on a kernel without seccomp suspend\n");
-		goto err_unlock;
-#endif
 	}
 
 	if (opts.pidfile && root_item == item) {
@@ -1637,6 +1559,7 @@ static inline int stage_participants(int next_stage)
 	case CR_STATE_RESTORE_SIGCHLD:
 		return task_entries->nr_threads;
 	case CR_STATE_RESTORE_CREDS:
+	case CR_STATE_SECCOMP_SUSPENDED:
 		return task_entries->nr_threads;
 	}
 
@@ -1711,6 +1634,11 @@ static int attach_to_tasks(bool root_seized, enum trace_flags *flag)
 				return -1;
 			}
 
+			if (ptrace(PTRACE_SUSPEND_SECCOMP, pid, NULL, NULL) < 0) {
+				pr_perror("failed suspending seccomp for %d", pid);
+				return -1;
+			}
+
 			ret = ptrace_stop_pie(pid, rsti(item)->breakpoint, flag);
 			if (ret < 0)
 				return -1;
@@ -1768,11 +1696,6 @@ detach:
 				BUG_ON(status >= 0);
 				break;
 			}
-
-#ifdef CONFIG_HAS_SUSPEND_SECCOMP
-			if (ptrace(PTRACE_SUSPEND_SECCOMP, pid, NULL, 0) < 0)
-				pr_perror("failed resuming seccomp");
-#endif
 
 			if (ptrace(PTRACE_DETACH, pid, NULL, 0))
 				pr_perror("Unable to execute %d", pid);
@@ -1931,13 +1854,14 @@ static int restore_root_task(struct pstree_item *init)
 	timing_stop(TIME_RESTORE);
 
 	ret = attach_to_tasks(root_as_sibling, &flag);
-
-	pr_info("Restore finished successfully. Resuming tasks.\n");
-	futex_set_and_wake(&task_entries->start, CR_STATE_COMPLETE);
+	futex_set_and_wake(&task_entries->start, CR_STATE_SECCOMP_SUSPENDED);
 
 	if (ret == 0)
 		ret = parasite_stop_on_syscall(task_entries->nr_threads,
 						__NR_rt_sigreturn, flag);
+
+	pr_info("Restore finished successfully. Resuming tasks.\n");
+	futex_set_and_wake(&task_entries->start, CR_STATE_COMPLETE);
 
 	if (clear_breakpoints())
 		pr_err("Unable to flush breakpoints\n");
@@ -2956,6 +2880,8 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 
 	task_args->nr_rings = mm->n_aios;
 	task_args->rings = rst_mem_remap_ptr(aio_rings, RM_PRIVATE);
+
+	task_args->seccomp_mode = core->tc->seccomp_mode;
 
 	task_args->n_helpers = n_helpers;
 	if (n_helpers > 0)

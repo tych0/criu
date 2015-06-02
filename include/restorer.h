@@ -158,6 +158,8 @@ struct task_restore_args {
 	char				*lsm_profile;
 	int				lsm_profile_len;
 
+	int				seccomp_mode;
+
 #ifdef CONFIG_VDSO
 	unsigned long			vdso_rt_size;
 	struct vdso_symtable		vdso_sym_rt;		/* runtime vdso symbols */
@@ -188,6 +190,14 @@ enum {
 	 * some code.
 	 */
 	CR_STATE_RESTORE_CREDS,
+	/*
+	 * We need to restore seccomp after all the tasks have been ptraced
+	 * and seccomp temporarily suspended. Also, once ptrace detatches,
+	 * seccomp is restored and any additional syscalls made by CRIU might
+	 * be killed, so this should be the very last step before the final
+	 * sigreturn.
+	 */
+	CR_STATE_SECCOMP_SUSPENDED,
 	CR_STATE_COMPLETE
 };
 

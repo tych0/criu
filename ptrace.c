@@ -34,23 +34,35 @@ int unseize_task(pid_t pid, int orig_st, int st)
 		if (orig_st == TASK_ALIVE)
 			kill(pid, SIGSTOP);
 	} else if (st == TASK_ALIVE) {
-
-#ifdef CONFIG_HAS_SUSPEND_SECCOMP
-		/*
-		 * we can always do this, it is a no-op if the task did not have any
-		 * seccomp mode enabled
-		 */
-		if (ptrace(PTRACE_SUSPEND_SECCOMP, pid, NULL, 0) < 0) {
-			pr_perror("failed resuming seccomp");
-			return -1;
-		}
-#endif
-
+		/* do nothing */ ;
 	} else
 		pr_err("Unknown final state %d\n", st);
 
 	return ptrace(PTRACE_DETACH, pid, NULL, NULL);
 }
+
+#ifdef CONFIG_HAS_SUSPEND_SECCOMP
+static int maybe_suspend_seccomp(pid_t pid, int seccomp_mode)
+{
+	if (seccomp_mode != SECCOMP_MODE_DISABLED &&
+			ptrace(PTRACE_SUSPEND_SECCOMP, pid, NULL, 1) < 0) {
+		pr_perror("suspending seccomp failed");
+		return -1;
+	}
+
+	return 0;
+}
+#else
+static int maybe_suspend_seccomp(pid_t pid, int seccomp_mode)
+{
+	if (seccomp_mode != SECCOMP_MODE_DISABLED) {
+		pr_err("seccomp enabled and seccomp suspending not supported\n");
+		return -1;
+	}
+
+	return 0;
+}
+#endif
 
 /*
  * This routine seizes task putting it into a special
@@ -139,19 +151,6 @@ try_again:
 		goto err;
 	}
 
-	if (cr.seccomp_mode != SECCOMP_MODE_DISABLED) {
-#ifdef CONFIG_HAS_SUSPEND_SECCOMP
-		if (ptrace(PTRACE_SUSPEND_SECCOMP, pid, NULL, 1) < 0) {
-			pr_perror("suspending seccomp failed");
-			goto err_stop;
-		}
-#else
-		pr_err("seccomp enabled and seccomp suspending not supported\n");
-		goto err_stop;
-#endif
-	}
-
-
 	if (SI_EVENT(si.si_code) != PTRACE_EVENT_STOP) {
 		/*
 		 * Kernel notifies us about the task being seized received some
@@ -168,6 +167,9 @@ try_again:
 		ret = 0;
 		goto try_again;
 	}
+
+	if (maybe_suspend_seccomp(pid, cr.seccomp_mode))
+		goto err_stop;
 
 	if (si.si_signo == SIGTRAP)
 		return TASK_ALIVE;

@@ -771,6 +771,34 @@ static int lsm_set_label(struct task_restore_args *args)
 	return ret;
 }
 
+static int prepare_seccomp(pid_t pid, int seccomp_mode)
+{
+	int ret;
+
+	if (seccomp_mode == SECCOMP_MODE_DISABLED)
+		return 0;
+
+	pr_info("restoring seccomp mode %d for %d\n", seccomp_mode, pid);
+
+	switch (seccomp_mode) {
+	case SECCOMP_MODE_STRICT:
+		if ((ret = sys_prctl(PR_SET_SECCOMP, SECCOMP_MODE_STRICT, 0, 0, 0))) {
+			pr_err("setting seccomp failed %d", ret);
+			return -1;
+		}
+		break;
+	case SECCOMP_MODE_FILTER:
+		pr_err("seccomp mode 2 not supported\n");
+		return -1;
+	default:
+		pr_err("unknown seccomp mode %d\n", seccomp_mode);
+		return -1;
+	}
+
+	return 0;
+}
+
+
 /*
  * The main routine to restore task via sigreturn.
  * This one is very special, we never return there
@@ -1206,8 +1234,6 @@ long __export_restore_task(struct task_restore_args *args)
 	/* Wait until children stop to use args->task_entries */
 	futex_wait_while_gt(&thread_inprogress, 1);
 
-	log_set_fd(-1);
-
 	/*
 	 * The code that prepared the itimers makes shure the
 	 * code below doesn't fail due to bad timing values.
@@ -1225,6 +1251,18 @@ long __export_restore_task(struct task_restore_args *args)
 		sys_setitimer(ITIMER_PROF, &args->itimers[2], NULL);
 
 	restore_posix_timers(args);
+
+	/*
+	 * Finally, restore seccomp just before the final sigreturn. A slight
+	 * abuse of the stage mecahnism here: usually we wait for all the
+	 * chidlren to be done, but in this case we're waiting for the parent
+	 * to switch to the SECCOMP_SUSPENDED stage to indicate that it is
+	 * safe for us to restore seccomp.
+	 */
+	futex_wait_while(&task_entries->start, CR_STATE_RESTORE_CREDS);
+	prepare_seccomp(sys_getpid(), args->seccomp_mode);
+
+	log_set_fd(-1);
 
 	sys_munmap(args->rst_mem, args->rst_mem_size);
 
