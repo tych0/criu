@@ -9,13 +9,42 @@
 const char *test_doc	= "Check that SECCOMP_MODE_STRICT is restored";
 const char *test_author	= "Tycho Andersen <tycho.andersen@canonical.com>";
 
+int get_seccomp_mode(pid_t pid, bool after_checkpoint)
+{
+	FILE *f;
+	char buf[PATH_MAX];
+
+	sprintf(buf, "/proc/%d/status", pid);
+	f = fopen(buf, "r+");
+	if (!f) {
+		err("fopen failed");
+		return -1;
+	}
+
+	while (NULL != fgets(buf, sizeof(buf), f)) {
+		int mode;
+		char state;
+
+		if (after_checkpoint && sscanf(buf, "State: %c %*s", &state) == 1 && state != 'R') {
+			fail("resumed but state is not R (%c), seccomp killed the process during resume\n", state);
+			break;
+		}
+
+		if (sscanf(buf, "Seccomp:\t%d", &mode) != 1)
+			continue;
+
+		fclose(f);
+		return mode;
+	}
+	fclose(f);
+
+	return -1;
+}
+
 int main(int argc, char ** argv)
 {
 	pid_t pid;
-	FILE *f;
-	char buf[PATH_MAX];
-	bool found = false;
-	int ret = 1;
+	int ret = 1, mode;
 
 	test_init(argc, argv);
 
@@ -35,47 +64,20 @@ int main(int argc, char ** argv)
 			/* can't sleep() here, seccomp kills us */;
 	}
 
+	while(get_seccomp_mode(pid, false) != SECCOMP_MODE_STRICT)
+		sleep(1);
+
 	test_daemon();
 	test_waitsig();
 
-	sprintf(buf, "/proc/%d/status", pid);
-	f = fopen(buf, "r+");
-	if (!f) {
-		err("fopen failed");
-		goto out;
+	mode = get_seccomp_mode(pid, true);
+	if (mode != SECCOMP_MODE_STRICT) {
+		fail("seccomp mode mismatch %d\n", mode);
+	} else {
+		pass();
+		ret = 0;
 	}
 
-	while (NULL != fgets(buf, sizeof(buf), f)) {
-		int mode;
-		char state;
-
-		if (sscanf(buf, "State: %c %*s", &state) == 1 && state != 'R') {
-			fail("resumed but state is not R (%c), seccomp killed the process during resume\n", state);
-			goto out;
-		}
-
-		if (sscanf(buf, "Seccomp:\t%d", &mode) != 1)
-			continue;
-
-		found = true;
-		if (mode != SECCOMP_MODE_STRICT) {
-			fail("seccomp mode mismatch %d\n", mode);
-			fclose(f);
-			goto out;
-		}
-
-		break;
-	}
-	fclose(f);
-
-	if (!found) {
-		fail("seccomp not found?\n");
-		goto out;
-	}
-
-	ret = 0;
-	pass();
-out:
 	kill(pid, SIGKILL);
 	return ret;
 }
