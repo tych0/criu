@@ -99,7 +99,7 @@ define PTRACE_SUSPEND_SECCOMP_TEST
 
 int main(void)
 {
-	return PTRACE_SUSPEND_SECCOMP;
+	return PTRACE_O_SUSPEND_SECCOMP;
 }
 
 endef

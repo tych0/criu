@@ -45,7 +45,7 @@ int unseize_task(pid_t pid, int orig_st, int st)
 static int maybe_suspend_seccomp(pid_t pid, int seccomp_mode)
 {
 	if (seccomp_mode != SECCOMP_MODE_DISABLED &&
-			ptrace(PTRACE_SUSPEND_SECCOMP, pid, NULL, 1) < 0) {
+			ptrace(PTRACE_SETOPTIONS, pid, NULL, PTRACE_O_SUSPEND_SECCOMP) < 0) {
 		pr_perror("suspending seccomp failed");
 		return -1;
 	}
