@@ -1255,7 +1255,7 @@ static int criu_signals_setup(void)
 	 */
 	sigfillset(&blockmask);
 	sigdelset(&blockmask, SIGCHLD);
-	ret = sigprocmask(SIG_BLOCK, &blockmask, NULL);
+	ret = sigprocmask(SIG_SETMASK, &blockmask, NULL);
 	if (ret < 0) {
 		pr_perror("Can't block signals");
 		return -1;
