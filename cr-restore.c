@@ -76,6 +76,7 @@
 #include "security.h"
 #include "lsm.h"
 #include "seccomp.h"
+#include "setproctitle.h"
 
 #include "parasite-syscall.h"
 
@@ -967,6 +968,7 @@ static int restore_one_task(int pid, CoreEntry *core)
 	else if (current->state == TASK_DEAD)
 		ret = restore_one_zombie(core);
 	else if (current->state == TASK_HELPER) {
+		setproctitle("criu helper");
 		restore_finish_stage(CR_STATE_RESTORE);
 		ret = 0;
 	} else {
