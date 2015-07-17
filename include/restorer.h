@@ -201,6 +201,7 @@ enum {
 };
 
 #define restore_finish_stage(__stage) ({				\
+		pr_err("%ld finishing stage %d\n", sys_gettid(), __stage); \
 		futex_dec_and_wake(&task_entries->nr_in_progress);	\
 		futex_wait_while(&task_entries->start, __stage);	\
 		(s32) futex_get(&task_entries->start);			\

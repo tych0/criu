@@ -64,11 +64,15 @@ static void sigchld_handler(int signal, siginfo_t *siginfo, void *data)
 	char *r;
 	int i;
 
+	pr_err("%ld in sigchld handler for %d\n", sys_getpid(), siginfo->si_pid);
+
 	/* We can ignore helpers that die, we expect them to after
 	 * CR_STATE_RESTORE is finished. */
 	for (i = 0; i < n_helpers; i++)
-		if (siginfo->si_pid == helpers[i])
+		if (siginfo->si_pid == helpers[i]) {
+			pr_err("matched helper %d %d\n", siginfo->si_pid, i);
 			return;
+		}
 
 	if (futex_get(&task_entries->start) == CR_STATE_RESTORE_SIGCHLD) {
 		pr_debug("%ld: Collect a zombie with (pid %d, %d)\n",
@@ -442,6 +446,7 @@ long __export_restore_thread(struct thread_restore_args *args)
 	if (restore_signals(args->siginfo, args->siginfo_n, false))
 		goto core_restore_end;
 
+	pr_err("TYCHO: %ld thread finished STATE_SIGCHLD\n", sys_gettid());
 	restore_finish_stage(CR_STATE_RESTORE_SIGCHLD);
 	restore_pdeath_sig(args);
 
@@ -1194,7 +1199,9 @@ long __export_restore_task(struct task_restore_args *args)
 
 	restore_finish_stage(CR_STATE_RESTORE);
 
+	pr_err("%ld waiting for %d zombies\n", sys_getpid(), args->nr_zombies);
 	futex_wait_while_gt(&zombies_inprogress, 0);
+	pr_err("%ld done waiting for zombies\n", sys_getpid());
 
 	if (wait_helpers(args) < 0)
 		goto core_restore_end;

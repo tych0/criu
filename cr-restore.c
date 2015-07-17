@@ -895,8 +895,10 @@ static int restore_one_zombie(CoreEntry *core)
 
 	if (task_entries != NULL) {
 		restore_finish_stage(CR_STATE_RESTORE);
+		pr_err("finished CR_STATE_RESTORE in zombie\n");
 		zombie_prepare_signals();
 		mutex_lock(&task_entries->zombie_lock);
+		pr_err("locked zombie mutex\n");
 	}
 
 	if (exit_code & 0x7f) {
@@ -961,7 +963,6 @@ static int restore_one_task(int pid, CoreEntry *core)
 	int ret;
 
 	/* No more fork()-s => no more per-pid logs */
-
 	if (task_alive(current))
 		ret = restore_one_alive_task(pid, core);
 	else if (current->state == TASK_DEAD)
@@ -1595,6 +1596,7 @@ static void __restore_switch_stage(int next_stage)
 
 static int restore_switch_stage(int next_stage)
 {
+	pr_err("TYCHO: switching stage to %d, participants: %d, helpers: %d, threads: %d tasks: %d\n", next_stage, stage_participants(next_stage), task_entries->nr_helpers, task_entries->nr_threads, task_entries->nr_tasks);
 	__restore_switch_stage(next_stage);
 	return restore_wait_inprogress_tasks();
 }

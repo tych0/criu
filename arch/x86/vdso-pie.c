@@ -248,6 +248,29 @@ err_oob:
 	return -EFAULT;
 }
 
+static void vdso_debug_show_self_maps(void)
+{
+	int fd = sys_open("/proc/self/maps", O_RDONLY, 0);
+	if (fd >= 0) {
+		char buf[128];
+		long len, i, pid = sys_getpid();
+
+		do {
+			len = sys_read(fd, buf, sizeof(buf));
+			if (len > 0) {
+				for (i = 0; i < len; i++) {
+					if (buf[i] != '\n')
+						continue;
+					buf[i] = '\0';
+					sys_lseek(fd, -(len - i - 1), SEEK_CUR);
+					break;
+				}
+				pr_debug("cm: %i: %s\n", (int)pid, buf);
+			}
+		} while (len > 0);
+	}
+}
+
 static int vdso_remap(char *who, unsigned long from, unsigned long to, size_t size)
 {
 	unsigned long addr;
@@ -256,8 +279,8 @@ static int vdso_remap(char *who, unsigned long from, unsigned long to, size_t si
 
 	addr = sys_mremap(from, size, size, MREMAP_MAYMOVE | MREMAP_FIXED, to);
 	if (addr != to) {
-		pr_err("Unable to remap %lx -> %lx %lx\n",
-		       from, to, addr);
+		pr_err("Unable to remap %lx -> %lx %lx\n", from, to, addr);
+		vdso_debug_show_self_maps();
 		return -1;
 	}
 
