@@ -44,6 +44,7 @@ enum {
 	PARASITE_CMD_DUMP_POSIX_TIMERS,
 	PARASITE_CMD_DUMP_MISC,
 	PARASITE_CMD_DUMP_CREDS,
+	PARASITE_CMD_DUMP_SECCOMP_FILTERS,
 	PARASITE_CMD_DRAIN_FDS,
 	PARASITE_CMD_GET_PROC_FD,
 	PARASITE_CMD_DUMP_TTY,
@@ -212,6 +213,14 @@ struct parasite_dump_creds {
 	 * args area is at least one page (PARASITE_ARG_SIZE_MIN).
 	 */
 	unsigned int		groups[0];
+};
+
+
+#define MAX_SECCOMP_FILTER_BYTES (PAGE_SIZE / 2)
+
+struct parasite_dump_seccomp_filters {
+	u32 len;
+	char buf[MAX_SECCOMP_FILTER_BYTES];
 };
 
 static inline void copy_sas(ThreadSasEntry *dst, const stack_t *src)

@@ -2681,6 +2681,10 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	int lsm_profile_len = 0;
 	unsigned long lsm_pos = 0;
 
+	void *seccomp_filters = NULL;
+	int seccomp_filters_len = 0;
+	unsigned long seccomp_filters_pos;
+
 	struct vm_area_list self_vmas;
 	struct vm_area_list *vmas = &rsti(current)->vmas;
 	int i;
@@ -2786,6 +2790,15 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 		xfree(rendered);
 
 	}
+
+	seccomp_filters_len = core->tc->seccomp_filters.len;
+	seccomp_filters_pos = rst_mem_cpos(RM_PRIVATE);
+	seccomp_filters = rst_mem_alloc(seccomp_filters_len, RM_PRIVATE);
+	if (!seccomp_filters)
+		goto err_nv;
+
+	memcpy(seccomp_filters, core->tc->seccomp_filters.data, seccomp_filters_len);
+
 
 	rst_mem_size = rst_mem_lock();
 	restore_bootstrap_len = restorer_len + args_len + rst_mem_size;
@@ -2913,6 +2926,10 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 #undef remap_array
 
 	task_args->seccomp_mode = core->tc->seccomp_mode;
+	if (core->tc->has_seccomp_filters) {
+		task_args->seccomp_filters_len = seccomp_filters_len;
+		task_args->seccomp_filters = rst_mem_remap_ptr(seccomp_filters_pos, RM_PRIVATE);
+	}
 
 	if (lsm)
 		task_args->creds.lsm_profile = rst_mem_remap_ptr(lsm_pos, RM_PRIVATE);

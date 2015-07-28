@@ -334,9 +334,9 @@ static int restore_signals(siginfo_t *ptr, int nr, bool group)
 	return 0;
 }
 
-static void restore_seccomp(int seccomp_mode)
+static void restore_seccomp(struct task_restore_args *args)
 {
-	switch (seccomp_mode) {
+	switch (args->seccomp_mode) {
 	case SECCOMP_MODE_DISABLED:
 		return;
 	case SECCOMP_MODE_STRICT:
@@ -344,7 +344,9 @@ static void restore_seccomp(int seccomp_mode)
 			goto die;
 		return;
 	case SECCOMP_MODE_FILTER:
-		goto die;
+		if (sys_prctl(PR_RESTORE_SECCOMP_FILTERS, (long) args->seccomp_filters, args->seccomp_filters_len, 0, 0))
+			goto die;
+		return;
 	default:
 		goto die;
 	}
@@ -445,7 +447,7 @@ long __export_restore_thread(struct thread_restore_args *args)
 	restore_finish_stage(CR_STATE_RESTORE_CREDS);
 	futex_dec_and_wake(&thread_inprogress);
 
-	restore_seccomp(args->ta->seccomp_mode);
+	restore_seccomp(args->ta);
 
 	new_sp = (long)rt_sigframe + SIGFRAME_OFFSET;
 	rst_sigreturn(new_sp);
@@ -1285,7 +1287,7 @@ long __export_restore_task(struct task_restore_args *args)
 
 	sys_munmap(args->rst_mem, args->rst_mem_size);
 
-	restore_seccomp(args->seccomp_mode);
+	restore_seccomp(args);
 
 	/*
 	 * Sigframe stack.

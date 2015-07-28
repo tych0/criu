@@ -775,6 +775,27 @@ int parasite_dump_creds(struct parasite_ctl *ctl, CredsEntry *ce)
 	return 0;
 }
 
+int parasite_dump_seccomp_filters(struct parasite_ctl *ctl, TaskCoreEntry *tc)
+{
+	struct parasite_dump_seccomp_filters *seccomp;
+	BUILD_BUG_ON(sizeof(*seccomp) > PAGE_SIZE);
+
+	seccomp = parasite_args(ctl, struct parasite_dump_seccomp_filters);
+
+	if (parasite_execute_daemon(PARASITE_CMD_DUMP_SECCOMP_FILTERS, ctl))
+		return -1;
+
+	tc->seccomp_filters.len = seccomp->len;
+	tc->seccomp_filters.data = xmalloc(tc->seccomp_filters.len);
+	if (!tc->seccomp_filters.data)
+		return -1;
+
+	memcpy(tc->seccomp_filters.data, seccomp->buf, tc->seccomp_filters.len);
+	tc->has_seccomp_filters = true;
+
+	return 0;
+}
+
 int parasite_drain_fds_seized(struct parasite_ctl *ctl,
 		struct parasite_drain_fd *dfds, int *lfds, struct fd_opts *opts)
 {

@@ -259,6 +259,32 @@ grps_err:
 	return -1;
 }
 
+static int dump_seccomp_filters(struct parasite_dump_seccomp_filters *filters)
+{
+	int ret;
+
+	if ((ret = sys_prctl(PR_DUMP_SECCOMP_FILTERS, 0, (long) &filters->len, 0, 0)) < 0) {
+		if (ret == -EINVAL) {
+			pr_err("Dumping seccomp filters not supported\n");
+			return -1;
+		}
+		pr_err("Dumping filters size failed\n");
+		return -1;
+	}
+
+	if (filters->len > sizeof(filters->buf)) {
+		pr_err("seccomp filters too large\n");
+		return -1;
+	}
+
+	if ((ret = sys_prctl(PR_DUMP_SECCOMP_FILTERS, (long) filters->buf, (long) &filters->len, 0, 0)) < 0) {
+		pr_err("Dumping seccomp filters failed %d", ret);
+		return -1;
+	}
+
+	return 0;
+}
+
 static int drain_fds(struct parasite_drain_fd *args)
 {
 	int ret;
@@ -602,6 +628,9 @@ static noinline __used int noinline parasite_daemon(void *args)
 			break;
 		case PARASITE_CMD_DUMP_CREDS:
 			ret = dump_creds(args);
+			break;
+		case PARASITE_CMD_DUMP_SECCOMP_FILTERS:
+			ret = dump_seccomp_filters(args);
 			break;
 		case PARASITE_CMD_DRAIN_FDS:
 			ret = drain_fds(args);

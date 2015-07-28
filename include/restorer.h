@@ -169,6 +169,8 @@ struct task_restore_args {
 	int				proc_fd;
 
 	int				seccomp_mode;
+	void				*seccomp_filters;
+	u32				seccomp_filters_len;
 
 #ifdef CONFIG_VDSO
 	unsigned long			vdso_rt_size;

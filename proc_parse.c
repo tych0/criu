@@ -820,11 +820,6 @@ int parse_pid_status(pid_t pid, struct proc_status_creds *cr)
 				goto err_parse;
 			}
 
-			if (cr->seccomp_mode == SECCOMP_MODE_FILTER) {
-				pr_err("SECCOMP_MODE_FILTER not currently supported\n");
-				goto err_parse;
-			}
-
 			done++;
 		}
 	}
