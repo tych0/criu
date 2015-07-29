@@ -237,6 +237,9 @@ generate_test_list()
 		static/seccomp_strict
 	"
 
+	TEST_SECCOMP_FILTERS="
+		static/seccomp_filter
+	"
 
 	$CRIU check -v0 --feature "mnt_id"
 	if [ $? -eq 0 ]; then
@@ -263,6 +266,11 @@ generate_test_list()
 	$CRIU check -v0 --feature "seccomp_suspend"
 	if [ $? -eq 0 ]; then
 		TEST_LIST="$TEST_LIST$TEST_SECCOMP_SUSPEND"
+	fi
+
+	$CRIU check -v0 --feature "seccomp_filters"
+	if [ $? -eq 0 ]; then
+		TEST_LIST="$TEST_LIST$TEST_SECCOMP_FILTERS"
 	fi
 
 	BLACKLIST_FOR_USERNS="
@@ -349,6 +357,7 @@ sockets00
 cow01
 apparmor
 seccomp_strict
+seccomp_filter
 different_creds
 "
 

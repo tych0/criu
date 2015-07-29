@@ -125,6 +125,7 @@ TST_NOFILE	=				\
 		fd				\
 		apparmor				\
 		seccomp_strict			\
+		seccomp_filter			\
 		different_creds			\
 #		jobctl00			\
 
