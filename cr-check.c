@@ -12,6 +12,10 @@
 #include <fcntl.h>
 #include <signal.h>
 #include <linux/if.h>
+#include <linux/filter.h>
+#include <linux/bpf.h>
+#include <linux/seccomp.h>
+#include <sys/syscall.h>
 #include <sys/ioctl.h>
 #include <termios.h>
 #include <sys/mman.h>
@@ -610,6 +614,71 @@ static int check_ptrace_suspend_seccomp(void)
 	return ret;
 }
 
+static int check_prctl_dump_seccomp_filters(void)
+{
+	pid_t pid;
+	int status;
+	
+	if (opts.check_ms_kernel) {
+		pr_warn("Skipping PR_{DUMP,RESTORE}_SECCOMP_FILTERS check");
+		return 0;
+	}
+
+	pid = fork();
+	if (pid < 0) {
+		return -1;
+	}
+
+	if (pid == 0) {
+		int len, ret;
+
+		struct sock_filter filter[] = {
+			BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, nr)),
+			/* Allow all syscalls except ptrace */
+			BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_ptrace, 0, 1),
+			BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
+			BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW),
+		};
+
+		struct sock_fprog bpf_prog = {
+			.len = (unsigned short)(sizeof(filter)/sizeof(filter[0])),
+			.filter = filter,
+		};
+
+		if (sys_prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, (long) &bpf_prog, 0, 0) < 0) {
+			exit(1);
+		}
+
+		if ((ret = sys_prctl(PR_DUMP_SECCOMP_FILTERS, 0, (long) &len, 0, 0)) < 0) {
+			if (ret == -EINVAL)
+				exit(2);
+			exit(1);
+		}
+
+		exit(0);
+	}
+
+	if (waitpid(pid, &status, 0) != pid) {
+		pr_err("waitpid failed?");
+		return -1;
+	}
+
+	if (WIFEXITED(status)) {
+		switch (WEXITSTATUS(status)) {
+		case 0:
+			return 0;
+		case 2:
+			pr_err("Kernel doesn't support PR_DUMP_SECCOMP_FILTERS");
+			return -1;
+		default:
+			pr_err("Setting up seccomp filters failed");
+			return -1;
+		}
+	}
+
+	return -1;
+}
+
 static int check_mem_dirty_track(void)
 {
 	if (kerndat_get_dirty_track() < 0)
@@ -800,6 +869,7 @@ int cr_check(void)
 	ret |= check_sigqueuinfo();
 	ret |= check_ptrace_peeksiginfo();
 	ret |= check_ptrace_suspend_seccomp();
+	ret |= check_prctl_dump_seccomp_filters();
 	ret |= check_mem_dirty_track();
 	ret |= check_posix_timers();
 	ret |= check_tun_cr(0);
@@ -863,6 +933,8 @@ int check_add_feature(char *feat)
 		chk_feature = check_fdinfo_lock;
 	else if (!strcmp(feat, "seccomp_suspend"))
 		chk_feature = check_ptrace_suspend_seccomp;
+	else if (!strcmp(feat, "seccomp_filters"))
+		chk_feature = check_prctl_dump_seccomp_filters;
 	else {
 		pr_err("Unknown feature %s\n", feat);
 		return -1;
