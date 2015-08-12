@@ -13,4 +13,12 @@
 #define SECCOMP_MODE_FILTER 2
 #endif
 
+#ifndef SECCOMP_SET_MODE_FILTER
+#define SECCOMP_SET_MODE_FILTER 1
+#endif
+
+#ifndef SECCOMP_FILTER_FLAG_EBPF
+#define SECCOMP_FILTER_FLAG_EBPF (1 << 1)
+#endif
+
 #endif

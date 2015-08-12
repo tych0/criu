@@ -76,6 +76,7 @@
 #include "security.h"
 #include "lsm.h"
 #include "seccomp.h"
+#include "bpf.h"
 
 #include "parasite-syscall.h"
 
@@ -2680,6 +2681,10 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	int lsm_profile_len = 0;
 	unsigned long lsm_pos = 0;
 
+	int *seccomp_filters = NULL;
+	int seccomp_filters_len = 0;
+	unsigned long seccomp_filters_pos;
+
 	struct vm_area_list self_vmas;
 	struct vm_area_list *vmas = &rsti(current)->vmas;
 	int i;
@@ -2784,6 +2789,40 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 		strncpy(lsm, rendered, lsm_profile_len);
 		xfree(rendered);
 
+	}
+
+	seccomp_filters_len = core->tc->n_seccomp_filters;
+	seccomp_filters_pos = rst_mem_cpos(RM_PRIVATE);
+	seccomp_filters = rst_mem_alloc(seccomp_filters_len * sizeof(int), RM_PRIVATE);
+	if (!seccomp_filters)
+		goto err_nv;
+
+	for (i = 0; i < seccomp_filters_len; i++) {
+		SeccompFilter *filter = core->tc->seccomp_filters[i];
+		int fd;
+
+		union bpf_attr attr = {
+			.prog_type = BPF_PROG_TYPE_SECCOMP,
+			.insn_cnt = filter->filter.len / sizeof(struct bpf_insn),
+			.insns = (long) filter->filter.data,
+			.license = (long) (filter->is_gpl ? "GPL" : "Not GPL"),
+			.log_level = 0,
+			.log_size = 0,
+			.log_buf = 0
+		};
+
+		/* assign one field outside of struct init to make sure any
+		 * padding is zero initialized
+		 */
+		attr.kern_version = 0;
+
+		fd = syscall(__NR_bpf, BPF_PROG_LOAD, &attr, sizeof(attr));
+		if (fd < 0) {
+			pr_perror("error loading bpf");
+			goto err_nv;
+		}
+
+		seccomp_filters[i] = fd;
 	}
 
 	rst_mem_size = rst_mem_lock();
@@ -2908,6 +2947,7 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	remap_array(rlims,	  rlims_nr, rlims_cpos);
 	remap_array(helpers,	  n_helpers, helpers_pos);
 	remap_array(zombies,	  n_zombies, zombies_pos);
+	remap_array(seccomp_filters,	  seccomp_filters_len, seccomp_filters_pos);
 
 #undef remap_array
 

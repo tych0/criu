@@ -19,6 +19,12 @@ enum seccomp_mode {
 	filter		= 2;
 };
 
+message seccomp_filter {
+	required bytes			filter		= 1;
+	required bool			is_gpl		= 2;
+	required uint64			prog_id		= 3;
+}
+
 message task_core_entry {
 	required uint32			task_state	= 1;
 	required uint32			exit_code	= 2;
@@ -37,6 +43,7 @@ message task_core_entry {
 	optional signal_queue_entry	signals_s	= 10;
 
 	optional seccomp_mode		seccomp_mode	= 11;
+	repeated seccomp_filter		seccomp_filters = 12;
 }
 
 message task_kobj_ids_entry {
