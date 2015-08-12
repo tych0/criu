@@ -64,6 +64,11 @@ struct rst_info {
 	 * restorer blob.
 	 */
 	bool			has_seccomp;
+	int			seccomp_filter;
+	int			inherited;
+
+	int			nr_seccomp_fds;
+	int			*seccomp_fds;
 
 	void			*breakpoint;
 };

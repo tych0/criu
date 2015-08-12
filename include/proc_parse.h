@@ -72,6 +72,17 @@ struct proc_pid_stat {
 	int			exit_code;
 };
 
+struct seccomp_info {
+	int fd;
+	int id;
+	struct seccomp_info *prev;
+
+	/* Only valid for the top level seccomp filters to link the forest
+	 * together.
+	 */
+	struct list_head forest;
+};
+
 #define PROC_CAP_SIZE	2
 
 struct proc_status_creds {
@@ -87,6 +98,8 @@ struct proc_status_creds {
 	int			ppid;
 
 	int			seccomp_mode;
+	struct seccomp_info	*last_filter;
+	struct seccomp_info	*inherited;
 };
 
 bool proc_status_creds_eq(struct proc_status_creds *o1, struct proc_status_creds *o2);

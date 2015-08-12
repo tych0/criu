@@ -74,6 +74,7 @@ obj-y	+= plugin.o
 obj-y	+= cr-errno.o
 obj-y	+= pie/pie-relocs.o
 obj-y	+= seize.o
+obj-y	+= seccomp.o
 
 ifneq ($(MAKECMDGOALS),clean)
 incdeps := y

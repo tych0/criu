@@ -76,6 +76,7 @@
 #include "security.h"
 #include "lsm.h"
 #include "seccomp.h"
+#include "bpf.h"
 
 #include "parasite-syscall.h"
 
@@ -238,6 +239,10 @@ static int root_prepare_shared(void)
 		goto err;
 
 	ret = prepare_restorer_blob();
+	if (ret)
+		goto err;
+
+	ret = prepare_seccomp_filters();
 	if (ret)
 		goto err;
 
@@ -1076,6 +1081,8 @@ static inline int fork_with_pid(struct pstree_item *item)
 		item->state = ca.core->tc->task_state;
 		rsti(item)->cg_set = ca.core->tc->cg_set;
 		rsti(item)->has_seccomp = ca.core->tc->seccomp_mode != SECCOMP_MODE_DISABLED;
+		rsti(item)->seccomp_filter = ca.core->tc->seccomp_filter;
+		rsti(item)->inherited = ca.core->tc->inherited;
 
 		if (item->state == TASK_DEAD)
 			rsti(item->parent)->nr_zombies++;
@@ -2693,6 +2700,10 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	int lsm_profile_len = 0;
 	unsigned long lsm_pos = 0;
 
+	int *seccomp_filters = NULL;
+	int seccomp_filters_len = 0;
+	unsigned long seccomp_filters_pos;
+
 	struct vm_area_list self_vmas;
 	struct vm_area_list *vmas = &rsti(current)->vmas;
 	int i;
@@ -2798,6 +2809,15 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 		xfree(rendered);
 
 	}
+
+	seccomp_filters_len = rsti(current)->nr_seccomp_fds;
+	seccomp_filters_pos = rst_mem_cpos(RM_PRIVATE);
+	seccomp_filters = rst_mem_alloc(seccomp_filters_len * sizeof(int), RM_PRIVATE);
+	if (!seccomp_filters)
+		goto err_nv;
+
+	memcpy(seccomp_filters, rsti(current)->seccomp_fds, seccomp_filters_len * sizeof(int));
+	close_unused_seccomp_filters(current);
 
 	rst_mem_size = rst_mem_lock();
 	restore_bootstrap_len = restorer_len + args_len + rst_mem_size;
@@ -2921,6 +2941,7 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	remap_array(rlims,	  rlims_nr, rlims_cpos);
 	remap_array(helpers,	  n_helpers, helpers_pos);
 	remap_array(zombies,	  n_zombies, zombies_pos);
+	remap_array(seccomp_filters,	  seccomp_filters_len, seccomp_filters_pos);
 
 #undef remap_array
 
