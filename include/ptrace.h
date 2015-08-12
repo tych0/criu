@@ -16,6 +16,10 @@
 # define PTRACE_O_SUSPEND_SECCOMP (1 << 21)
 #endif
 
+#ifndef PTRACE_SECCOMP_GET_FILTER
+#define PTRACE_SECCOMP_GET_FILTER	40
+#endif
+
 #ifndef PTRACE_INTERRUPT
 # define PTRACE_INTERRUPT	0x4207
 #endif
