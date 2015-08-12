@@ -87,6 +87,8 @@ struct proc_status_creds {
 	int			ppid;
 
 	int			seccomp_mode;
+	int			n_seccomp_filters;
+	SeccompFilter		*seccomp_filters;
 };
 
 bool proc_status_creds_eq(struct proc_status_creds *o1, struct proc_status_creds *o2);

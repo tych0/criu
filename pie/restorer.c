@@ -334,17 +334,30 @@ static int restore_signals(siginfo_t *ptr, int nr, bool group)
 	return 0;
 }
 
-static void restore_seccomp(int seccomp_mode)
+static void restore_seccomp(struct task_restore_args *args)
 {
-	switch (seccomp_mode) {
+	switch (args->seccomp_mode) {
 	case SECCOMP_MODE_DISABLED:
 		return;
 	case SECCOMP_MODE_STRICT:
 		if (sys_prctl(PR_SET_SECCOMP, SECCOMP_MODE_STRICT, 0, 0, 0))
 			goto die;
 		return;
-	case SECCOMP_MODE_FILTER:
-		goto die;
+	case SECCOMP_MODE_FILTER: {
+		int i;
+		seccomp_restore_arg arg;
+
+		memzero(&arg, sizeof(arg));
+		arg.size = sizeof(arg);
+
+		for (i = args->seccomp_filters_n - 1; i >= 0; i--) {
+			arg.add_fd = args->seccomp_filters[i];
+
+			if (sys_seccomp(SECCOMP_MODE_FILTER_EBPF, SECCOMP_EBPF_ADD_FD, (char *) &arg))
+				goto die;
+		}
+		return;
+	}
 	default:
 		goto die;
 	}
@@ -443,9 +456,15 @@ long __export_restore_thread(struct thread_restore_args *args)
 		pr_info("Restoring seccomp mode %d for %ld\n", args->ta->seccomp_mode, sys_getpid());
 
 	restore_finish_stage(CR_STATE_RESTORE_CREDS);
-	futex_dec_and_wake(&thread_inprogress);
 
-	restore_seccomp(args->ta->seccomp_mode);
+	/* Right now we assume all seccomp filters are the same across threads
+	 * (as we do with the rest of the creds). Thus, we re-use the fds here
+	 * and in the main thread; sow e make sure to finish using them before
+	 * the main thread can close them.
+	 */
+	restore_seccomp(args->ta);
+
+	futex_dec_and_wake(&thread_inprogress);
 
 	new_sp = (long)rt_sigframe + SIGFRAME_OFFSET;
 	rst_sigreturn(new_sp);
@@ -1283,7 +1302,10 @@ long __export_restore_task(struct task_restore_args *args)
 
 	restore_posix_timers(args);
 
-	restore_seccomp(args->seccomp_mode);
+	restore_seccomp(args);
+
+	for (i = 0; i < args->seccomp_filters[i]; i++)
+		sys_close(args->seccomp_filters[i]);
 
 	sys_munmap(args->rst_mem, args->rst_mem_size);
 
