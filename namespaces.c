@@ -849,8 +849,6 @@ struct unsc_msg {
 	char c[CMSG_SPACE(sizeof(int))];
 };
 
-#define MAX_MSG_SIZE	256
-
 static int usernsd_pid;
 
 static inline void unsc_msg_init(struct unsc_msg *m, uns_call_t *c,
