@@ -215,8 +215,6 @@ generate_test_list()
 	"
 
 	TEST_MNTNS="
-		ns/static/mnt_ext_auto
-		ns/static/mnt_ext_master
 		ns/static/mntns_open
 		ns/static/mntns_link_remap
 		ns/static/mntns_link_ghost

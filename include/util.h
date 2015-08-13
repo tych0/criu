@@ -261,4 +261,5 @@ void split(char *str, char token, char ***out, int *n);
 
 int fd_has_data(int lfd);
 
+const char *ns_to_string(unsigned int ns);
 #endif /* __CR_UTIL_H__ */
