@@ -120,6 +120,12 @@ static int ipv4_conf_op(char *tgt, int *conf, int op, NetnsEntry **netns)
 		ri++;
 	}
 
+	/* If we don't have anything to restore, let's not invoke usernsd and
+	 * all that.
+	 */
+	if (ri == 0)
+		return 0;
+
 	ret = sysctl_op(req, ri, op);
 	if (ret < 0) {
 		pr_err("Failed to %s %s/<confs>\n", (op == CTL_READ)?"read":"write", tgt);
