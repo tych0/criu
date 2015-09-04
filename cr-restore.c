@@ -133,8 +133,10 @@ static int crtools_prepare_shared(void)
 	if (tty_prep_fds())
 		return -1;
 
+	/*
 	if (prepare_cgroup())
 		return -1;
+	*/
 
 	return 0;
 }
@@ -1526,8 +1528,10 @@ static int restore_task_with_children(void *_arg)
 	 * we will only move the root one there, others will
 	 * just have it inherited.
 	 */
+	/*
 	if (prepare_task_cgroup(current) < 0)
 		goto err_fini_mnt;
+	*/
 
 	if (prepare_sigactions() < 0)
 		goto err_fini_mnt;
@@ -1852,10 +1856,12 @@ static int restore_root_task(struct pstree_item *init)
 	if (ret < 0)
 		goto out_kill;
 
+	/*
 	ret = prepare_cgroup_properties();
 	fini_cgroup();
 	if (ret < 0)
 		goto out_kill;
+	*/
 
 	ret = run_scripts(ACT_POST_RESTORE);
 	if (ret != 0) {

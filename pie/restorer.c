@@ -1059,6 +1059,17 @@ long __export_restore_task(struct task_restore_args *args)
 	 * more widespread once kernel get deployed over the world.
 	 * Thus lets be opportunistic and use new inteface as a try.
 	 */
+	pr_err("start_code:\t\t%ld.\n", args->mm.mm_start_code);
+	pr_err("end_code:\t\t%ld.\n", args->mm.mm_end_code);
+	pr_err("start_data:\t\t%ld.\n", args->mm.mm_start_data);
+	pr_err("end_data:\t\t%ld.\n", args->mm.mm_end_data);
+	pr_err("start_stack:\t\t%ld.\n", args->mm.mm_start_stack);
+	pr_err("start_brk:\t\t%ld.\n", args->mm.mm_start_brk);
+	pr_err("mm_brk:\t\t%ld.\n", args->mm.mm_brk);
+	pr_err("arg_start:\t\t%ld.\n", args->mm.mm_arg_start);
+	pr_err("arg_end:\t\t%ld.\n", args->mm.mm_arg_end);
+	pr_err("env_start:\t\t%ld.\n", args->mm.mm_env_start);
+	pr_err("env_end:\t\t%ld.\n", args->mm.mm_env_end);
 	prctl_map = (struct prctl_mm_map) {
 		.start_code	= args->mm.mm_start_code,
 		.end_code	= args->mm.mm_end_code,
@@ -1077,6 +1088,7 @@ long __export_restore_task(struct task_restore_args *args)
 	};
 	ret = sys_prctl(PR_SET_MM, PR_SET_MM_MAP, (long)&prctl_map, sizeof(prctl_map), 0);
 	if (ret == -EINVAL) {
+		pr_err("got EINVAL from PR_SET_MM_MAP\n");
 		ret  = sys_prctl_safe(PR_SET_MM, PR_SET_MM_START_CODE,	(long)args->mm.mm_start_code, 0);
 		ret |= sys_prctl_safe(PR_SET_MM, PR_SET_MM_END_CODE,	(long)args->mm.mm_end_code, 0);
 		ret |= sys_prctl_safe(PR_SET_MM, PR_SET_MM_START_DATA,	(long)args->mm.mm_start_data, 0);
