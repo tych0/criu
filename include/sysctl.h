@@ -1,9 +1,20 @@
 #ifndef __CR_SYSCTL_H__
 #define __CR_SYSCTL_H__
 
+#include <sys/utsname.h>
+#include <net/if.h>
+
+#define MAX_CONF_OPT_PATH IFNAMSIZ+50
+
+/* The only strings we use here are hosname and domain name (the rest of the
+ * args are <= 64bit ints), so let's just use that as the longest size possible
+ * for arg length.
+ */
+#define MAX_SYSCTL_ARG_LEN	(sizeof(((struct utsname *)0)->nodename))
+
 struct sysctl_req {
-	char	*name;
-	void	*arg;
+	char	name[MAX_CONF_OPT_PATH];
+	char	arg[MAX_SYSCTL_ARG_LEN];
 	int	type;
 	int	flags;
 };

@@ -89,7 +89,6 @@ static char *devconfs[] = {
 #define DEVCONFS_UNUSED        (-1u)
 
 #define NET_CONF_PATH "net/ipv4/conf"
-#define MAX_CONF_OPT_PATH IFNAMSIZ+50
 
 static int ipv4_conf_op(char *tgt, int *conf, int op, NetnsEntry **netns)
 {
@@ -113,8 +112,9 @@ static int ipv4_conf_op(char *tgt, int *conf, int op, NetnsEntry **netns)
 			conf[i] = DEVCONFS_UNUSED;
 
 		snprintf(path[i], MAX_CONF_OPT_PATH, "%s/%s/%s", NET_CONF_PATH, tgt, devconfs[i]);
-		req[ri].name = path[i];
-		req[ri].arg = &conf[i];
+		strncpy(req[ri].name, path[i], sizeof(req[ri].name));
+		memcpy(req[ri].arg, &conf[i], sizeof(conf[i]));
+		// req[ri].arg = &conf[i];
 		req[ri].type = CTL_32;
 		req[ri].flags = flags;
 		ri++;

@@ -8,13 +8,17 @@
 #include "namespaces.h"
 #include "sysctl.h"
 #include "util.h"
+#include "net.h"
+
 
 struct sysctl_userns_req {
-	char	*name;
-	void	*arg;
+	int			op;
+	int			len;
+	struct sysctl_req	*reqs;
+	char	name[MAX_CONF_OPT_PATH];
+	char	arg[MAX_SYSCTL_ARG_LEN];
 	int	type;
 	int	flags;
-	int	op;
 };
 
 #define __SYSCTL_OP(__ret, __fd, __req, __type, __nr, __op)		\
@@ -135,38 +139,14 @@ err:
 	return ret;
 }
 
-static int sysctl_userns_arg_size(int type)
-{
-	switch(CTL_TYPE(type)) {
-	case __CTL_U32A:
-		return sizeof(u32) * CTL_LEN(type);
-	case CTL_U32:
-		return sizeof(u32);
-	case CTL_32:
-		return sizeof(s32);
-	case __CTL_U64A:
-		return sizeof(u64) * CTL_LEN(type);
-	case CTL_U64:
-		return sizeof(u64);
-	case __CTL_STR:
-		return sizeof(char) * CTL_LEN(type) + 1;
-	default:
-		pr_err("unknown arg type %d\n", type);
-
-		/* Ensure overflow to cause an error */
-		return MAX_UNSFD_MSG_SIZE;
-	}
-}
-
 static int __sysctl_op(void *arg, int unused)
 {
 	int fd, ret = -1, nr = 1, flags, dir;
 	struct sysctl_userns_req *req = arg;
 	int op = req->op;
 
-	// fix up the pointers
-	req->name = (char *) &req[1];
-	req->arg = req->name + strlen(req->name) + 1;
+	// fix up the pointer
+	req->reqs = (struct sysctl_req *) &req[1];
 
 	dir = open("/proc/sys", O_RDONLY, O_DIRECTORY);
 	if (dir < 0) {
@@ -217,49 +197,27 @@ static int __sysctl_op(void *arg, int unused)
 int sysctl_op(struct sysctl_req *req, size_t nr_req, int op)
 {
 	int ret = 0;
-	int dir = -1;
 	struct sysctl_userns_req *userns_req;
 
 	userns_req = alloca(MAX_UNSFD_MSG_SIZE);
-	userns_req->name = (char *) (&userns_req[1]);
+	userns_req->op = op;
+	userns_req->len = nr_req;
+	userns_req->reqs = (struct sysctl_req *) &userns_req[1];
+	memcpy(userns_req->reqs, req, nr_req * sizeof(struct sysctl_req));
 
-	while (nr_req--) {
-		int arg_len = sysctl_userns_arg_size(req->type);
-		int name_len = strlen(req->name) + 1;
-		int total_len = sizeof(*userns_req) + arg_len + name_len;
+	ret = userns_call(__sysctl_op, UNS_ASYNC, userns_req, MAX_UNSFD_MSG_SIZE, 0);
+	if (ret < 0)
+		return -1;
 
-		if (total_len > MAX_UNSFD_MSG_SIZE) {
-			pr_err("sysctl msg too big: %s\n", req->name);
-			return -1;
-		}
-
-		strcpy(userns_req->name, req->name);
-
-		userns_req->arg = userns_req->name + name_len;
-		if (op == CTL_WRITE)
-			memcpy(userns_req->arg, req->arg, arg_len);
-
-		userns_req->type = req->type;
-		userns_req->flags = req->flags;
-		userns_req->op = op;
-
-		ret = userns_call(__sysctl_op, UNS_ASYNC, userns_req, total_len, 0);
-		if (ret < 0)
-			break;
-
-		/*
-		 * Here, we use a little hack: since we only read in dump mode
-		 * when usernsd is not active, we know the above call happened
-		 * in this address space, so we can just copy the value read
-		 * back out. If ther was an API to return stuff via
-		 * userns_call(), that would be preferable.
-		 */
-		if (op == CTL_READ)
-			memcpy(req->arg, userns_req->arg, arg_len);
-		req++;
-	}
-
-	close_safe(&dir);
+	/*
+	 * Here, we use a little hack: since we only read in dump mode
+	 * when usernsd is not active, we know the above call happened
+	 * in this address space, so we can just copy the value read
+	 * back out. If ther was an API to return stuff via
+	 * userns_call(), that would be preferable.
+	 */
+	if (op == CTL_READ)
+		memcpy(req, userns_req->reqs, nr_req * sizeof(struct sysctl_req));
 
 	return ret;
 }
