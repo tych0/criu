@@ -59,7 +59,6 @@ static struct irmap hints[] = {
 	{ .path = "/var/spool", .nr_kids = -1, },
 	{ .path = "/lib/udev", .nr_kids = -1, },
 	{ .path = "/.", .nr_kids = 0, },
-	{ .path = "/no-such-path", .nr_kids = -1, },
 	{ },
 };
 
@@ -285,6 +284,24 @@ char *irmap_lookup(unsigned int s_dev, unsigned long i_ino)
 			goto out;
 		}
 	}
+
+	if (opts.irmap_deep_scan) {
+		struct irmap *root;
+
+		pr_warn("irmap not found from hints, doing deep scan... this can take a while.");
+
+		root = &hints[ARRAY_SIZE(hints) - 1];
+		root->nr_kids = -1;
+
+		c = irmap_scan(root, s_dev, i_ino);
+		if (c) {
+			pr_debug("\tScanned %s\n", c->path);
+			path = c->path;
+			goto out;
+		}
+	}
+
+	pr_err("irmap path lookup failed. Try --irmap-deep-scan (but it may be slow!)\n");
 
 out:
 	timing_stop(TIME_IRMAP_RESOLVE);

@@ -453,6 +453,9 @@ static int setup_opts_from_req(int sk, CriuOpts *req)
 		}
 	}
 
+	if (req->has_irmap_deep_scan)
+		opts.irmap_deep_scan = req->irmap_deep_scan;
+
 	return 0;
 
 err:

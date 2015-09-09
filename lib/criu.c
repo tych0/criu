@@ -703,6 +703,12 @@ err:
 	return -ENOMEM;
 }
 
+void criu_local_set_irmap_deep_scan(criu_opts *opts, bool deep_scan)
+{
+	opts->rpc->has_irmap_deep_scan = true;
+	opts->rpc->irmap_deep_scan = deep_scan;
+}
+
 int criu_add_skip_mnt(char *mnt)
 {
 	return criu_local_add_skip_mnt(global_opts, mnt);
@@ -722,6 +728,11 @@ void criu_set_ghost_limit(unsigned int limit)
 int criu_add_irmap_path(char *path)
 {
 	return criu_local_add_irmap_path(global_opts, path);
+}
+
+void criu_set_irmap_deep_scan(bool deep_scan)
+{
+	return criu_local_set_irmap_deep_scan(global_opts, deep_scan);
 }
 
 static CriuResp *recv_resp(int socket_fd)

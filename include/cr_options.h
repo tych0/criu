@@ -93,6 +93,7 @@ struct cr_options {
 	bool			overlayfs;
 	size_t			ghost_limit;
 	struct list_head	irmap_scan_paths;
+	bool			irmap_deep_scan;
 };
 
 extern struct cr_options opts;

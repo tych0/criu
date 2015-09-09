@@ -252,6 +252,7 @@ int main(int argc, char *argv[], char *envp[])
 		{ "freeze-cgroup",		required_argument,	0, 1068 },
 		{ "ghost-limit",		required_argument,	0, 1069 },
 		{ "irmap-scan-path",		required_argument,	0, 1070 },
+		{ "irmap-deep-scan",		no_argument,		0, 1071 },
 		{ },
 	};
 
@@ -491,6 +492,9 @@ int main(int argc, char *argv[], char *envp[])
 		case 1070:
 			if (irmap_scan_path_add(optarg))
 				return -1;
+			break;
+		case 1071:
+			opts.irmap_deep_scan = true;
 			break;
 		case 'M':
 			{
