@@ -128,6 +128,7 @@ TST_NOFILE	=				\
 		apparmor				\
 		seccomp_strict			\
 		seccomp_filter			\
+		seccomp_filter_tsync			\
 		different_creds			\
 #		jobctl00			\
 
@@ -320,6 +321,7 @@ pthread01:		override LDLIBS += -pthread
 pthread02:		override LDLIBS += -pthread
 sigpending:		override LDLIBS += -pthread
 sigaltstack:		override LDLIBS += -pthread
+seccomp_filter_tsync:		override LDLIBS += -pthread
 shm:			override CFLAGS += -DNEW_IPC_NS
 msgque:			override CFLAGS += -DNEW_IPC_NS
 sem:			override CFLAGS += -DNEW_IPC_NS
