@@ -367,6 +367,7 @@ cow01
 apparmor
 seccomp_strict
 seccomp_filter
+seccomp_filter_tsync
 different_creds
 inotify01
 "
