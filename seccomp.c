@@ -15,7 +15,6 @@
 #include "protobuf/seccomp.pb-c.h"
 
 /* populated on dump during collect_seccomp_filters() */
-static LIST_HEAD(seccomp_tree);
 static int next_filter_id = 0;
 
 static struct seccomp_info *find_inherited(struct pstree_item *parent, int filter)
@@ -36,17 +35,17 @@ static struct seccomp_info *find_inherited(struct pstree_item *parent, int filte
 
 static int collect_filter_for_pstree(struct pstree_item *item)
 {
-	struct seccomp_info *filters = NULL, *cursor, *inherited;
-	int filter_count, i;
+	struct seccomp_info *filters = NULL, *cursor;
+	int filter_count, i, ret = -1;
 
 	if (dmpi(item)->pi_creds->seccomp_mode != SECCOMP_MODE_FILTER)
 		return 0;
 
 	for (i = 0; true; i++) {
 		int fd;
-		struct seccomp_info *filter;
+		struct seccomp_info *filter, *inherited = NULL;
 
-		fd = ptrace(PTRACE_SECCOMP_GET_FILTER_FD, item->pid, NULL, i);
+		fd = ptrace(PTRACE_SECCOMP_GET_FILTER_FD, item->pid.real, NULL, i);
 		if (fd < 0) {
 			/* end of the search */
 			if (errno == EINVAL) {
@@ -72,7 +71,6 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 		filter = xmalloc(sizeof(*filter));
 		if (!filter)
 			goto out;
-		INIT_LIST_HEAD(&filter->forest);
 
 		filter->fd = fd;
 		filter->prev = filters;
@@ -80,25 +78,22 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 	}
 
 save_filters:
-	filter_count = i + 1;
+	filter_count = i;
 
-	for (cursor = filters, i = filter_count + next_filter_id;
-	     i >= next_filter_id;
-	     i--, cursor = cursor->prev) {
+	for (cursor = filters, i = filter_count + next_filter_id - 1;
+	     i >= next_filter_id; i--) {
 		BUG_ON(!cursor);
 		cursor->id = i;
+		cursor = cursor->prev;
 	}
+
+	next_filter_id += filter_count;
 
 	dmpi(item)->pi_creds->last_filter = filters;
 
-	/* If this filter isn't inherited, then it should start a new tree in
-	 * the forest.
-	 */
-	if (!inherited)
-		list_add(&cursor->forest, &seccomp_tree);
-
 	/* Don't free the part of the tree we just successfully acquired */
 	filters = NULL;
+	ret = 0;
 out:
 	while (filters) {
 		struct seccomp_info *freeme = filters;
@@ -106,7 +101,7 @@ out:
 		xfree(freeme);
 	}
 
-	return 0;
+	return ret;
 }
 
 static int dump_seccomp_info(struct seccomp_info *info, SeccompFilter **filters)
@@ -131,7 +126,7 @@ static int dump_seccomp_info(struct seccomp_info *info, SeccompFilter **filters)
 
 	BUG_ON(len % sizeof(insns[0]));
 
-	filter = filters[info->id] = xmalloc(sizeof(*filters));
+	filter = filters[info->id] = xmalloc(sizeof(*filter));
 	if (!filter)
 		return -1;
 

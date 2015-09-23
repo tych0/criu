@@ -76,11 +76,6 @@ struct seccomp_info {
 	int fd;
 	int id;
 	struct seccomp_info *prev;
-
-	/* Only valid for the top level seccomp filters to link the forest
-	 * together.
-	 */
-	struct list_head forest;
 };
 
 #define PROC_CAP_SIZE	2
