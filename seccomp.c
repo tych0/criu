@@ -84,7 +84,7 @@ save_filters:
 
 	for (cursor = filters, i = filter_count + next_filter_id;
 	     i >= next_filter_id;
-	     i = i - 1, cursor = cursor->prev) {
+	     i--, cursor = cursor->prev) {
 		BUG_ON(!cursor);
 		cursor->id = i;
 	}
