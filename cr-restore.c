@@ -825,6 +825,9 @@ static int restore_one_alive_task(int pid, CoreEntry *core)
 	if (prepare_fds(current))
 		return -1;
 
+	if (fill_seccomp_fds(item) < 0)
+		return -1;
+
 	if (prepare_file_locks(pid))
 		return -1;
 
@@ -1080,9 +1083,18 @@ static inline int fork_with_pid(struct pstree_item *item)
 
 		item->state = ca.core->tc->task_state;
 		rsti(item)->cg_set = ca.core->tc->cg_set;
+
 		rsti(item)->has_seccomp = ca.core->tc->seccomp_mode != SECCOMP_MODE_DISABLED;
-		rsti(item)->seccomp_filter = ca.core->tc->seccomp_filter;
-		rsti(item)->inherited = ca.core->tc->inherited;
+
+		if (ca.core->tc->seccomp_mode == SECCOMP_MODE_FILTER) {
+			BUG_ON(!ca.core->tc->has_seccomp_filter);
+			rsti(item)->seccomp_filter = ca.core->tc->seccomp_filter;
+
+			if (ca.core->tc->has_inherited)
+				rsti(item)->inherited = ca.core->tc->inherited;
+			else
+				rsti(item)->inherited = -1;
+		}
 
 		if (item->state == TASK_DEAD)
 			rsti(item->parent)->nr_zombies++;

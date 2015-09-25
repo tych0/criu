@@ -350,10 +350,13 @@ static void restore_seccomp(struct task_restore_args *args)
 		arg.size = sizeof(arg);
 
 		for (i = args->seccomp_filters_n - 1; i >= 0; i--) {
+			int ret;
 			arg.install_fd = args->seccomp_filters[i];
 
-			if (sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_INSTALL, (char *) &arg))
+			if ((ret = sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_INSTALL, (char *) &arg)) < 0) {
+				pr_err("%ld failed seccomp fd: %d\n", sys_getpid(), ret);
 				goto die;
+			}
 
 			sys_close(args->seccomp_filters[i]);
 		}
@@ -1277,7 +1280,7 @@ long __export_restore_task(struct task_restore_args *args)
 	futex_wait_while_gt(&thread_inprogress, 1);
 
 	sys_close(args->proc_fd);
-	log_set_fd(-1);
+	//log_set_fd(-1);
 
 	/*
 	 * The code that prepared the itimers makes shure the

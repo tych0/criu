@@ -106,7 +106,7 @@ out:
 
 static int dump_seccomp_info(struct seccomp_info *info, SeccompFilter **filters)
 {
-	int len, prev_id;
+	int len;
 	cr_seccomp_fd fd;
 	struct sock_filter insns[BPF_MAXINSNS];
 	SeccompFilter *filter;
@@ -119,6 +119,7 @@ static int dump_seccomp_info(struct seccomp_info *info, SeccompFilter **filters)
 	fd.insns = insns;
 
 	len = sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_DUMP, (char *) &fd);
+	close_safe(&info->fd);
 	if (len < 0) {
 		pr_perror("seccomp fd dump failed");
 		return -1;
@@ -129,20 +130,21 @@ static int dump_seccomp_info(struct seccomp_info *info, SeccompFilter **filters)
 	filter = filters[info->id] = xmalloc(sizeof(*filter));
 	if (!filter)
 		return -1;
+	seccomp_filter__init(filter);
 
 	filter->id = info->id;
 
-	prev_id = -1;
-	if (info->prev)
-		prev_id = info->prev->id;
-	filter->prev = prev_id;
+	if (info->prev) {
+		filter->has_prev = true;
+		filter->prev = info->prev->id;
+	}
 
-	filter->filter.len = len;
 	filter->filter.data = xmalloc(len);
 	if (!filter->filter.data) {
 		xfree(filter);
 		return -1;
 	}
+	filter->filter.len = len;
 
 	memcpy(filter->filter.data, fd.insns, len);
 	return 0;
@@ -154,9 +156,14 @@ static int dump_seccomp_filters(void)
 	SeccompEntry se = SECCOMP_ENTRY__INIT;
 	int ret = -1, i;
 
+	/* If we didn't collect any filters, don't create a seccomp image at all. */
+	if (next_filter_id == 0)
+		return 0;
+
 	se.seccomp_filters = xzalloc(sizeof(*se.seccomp_filters) * next_filter_id);
 	if (!se.seccomp_filters)
 		return -1;
+	se.n_seccomp_filters = next_filter_id;
 
 	for_each_pstree_item(item) {
 		struct seccomp_info *cursor;
@@ -203,6 +210,7 @@ int collect_seccomp_filters(void)
 /* Populated on restore by prepare_seccomp_filters */
 static int *fds = NULL;
 static int n_fds = 0;
+static SeccompEntry *se = NULL;
 
 /* For now, we open /all/ of the seccomp fds in the root task, and just inherit
  * them all (and close them all) further on down the tree as needed. However,
@@ -213,14 +221,12 @@ static int n_fds = 0;
  */
 int prepare_seccomp_filters(void)
 {
-	SeccompEntry *se;
 	struct cr_img *img;
 	int ret = -1, i;
-	struct pstree_item *item;
 	struct seccomp_fd fd;
 	struct sock_fprog fprog;
 
-	img = open_image(CR_FD_CGROUP, O_RSTR);
+	img = open_image(CR_FD_SECCOMP, O_RSTR);
 	if (!img)
 		return -1;
 
@@ -229,43 +235,75 @@ int prepare_seccomp_filters(void)
 	if (ret < 0)
 		return -1;
 
+	BUG_ON(!se);
+	return 0;
+}
+
+int
+
 	fd.size = sizeof(fd);
 	fd.new_prog = &fprog;
 
+	fds = xmalloc(sizeof(*fds) * se->n_seccomp_filters);
+	if (!fds)
+		goto err;
+	n_fds = se->n_seccomp_filters;
+
 	for (i = 0; i < se->n_seccomp_filters; i++) {
 		SeccompFilter *sf = se->seccomp_filters[i];
+
+		BUG_ON(sf->filter.len % sizeof(struct sock_filter));
 
 		fprog.len = sf->filter.len / sizeof(struct sock_filter);
 		fprog.filter = (struct sock_filter *) sf->filter.data;
 
 		fds[sf->id] = sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_NEW, (char *) &fd);
 		if (fds[sf->id] < 0) {
+			errno = -fds[sf->id];
 			pr_perror("importing seccomp program failed");
-			goto out;
+			goto err;
 		}
+
+pr_err("created seccomp fd %d\n", fds[sf->id]);
 	}
 
-	for_each_pstree_item(item) {
-		struct rst_info *ri = rsti(item);
+	return 0;
+err:
+	if (fds) {
+		for (i = 0; i < n_fds; i++)
+			close(fds[i]);
+	}
 
-		for (i = ri->seccomp_filter; i >= 0; i = se->seccomp_filters[i]->prev) {
-			void *m;
+	seccomp_entry__free_unpacked(se, NULL);
+	return -1;
+}
 
-			m = realloc(ri->seccomp_fds, sizeof(*ri->seccomp_fds) * (ri->nr_seccomp_fds + 1));
-			if (!m)
-				goto out;
+int fill_seccomp_fds(struct pstree_item *item)
+{
+	int i, ret = -1;
+	struct rst_info *ri = rsti(item);
 
-			ri->seccomp_fds = m;
-			ri->seccomp_fds[ri->nr_seccomp_fds++] = fds[i];
+	BUG_ON(!se);
 
-			/* The last filter we should restore is the first
-			 * inherited one, because we expect the process that
-			 * didn't inherit this filter to correctly restore
-			 * what's above it.
-			 */
-			if (ri->inherited == i)
-				break;
-		}
+	for (i = ri->seccomp_filter; true; i = se->seccomp_filters[i]->prev) {
+		void *m;
+pr_err("pid %d gets seccomp fd %d (inherited %d)\n", getpid(), fds[i], ri->inherited);
+pr_err("next: %d\n", se->seccomp_filters[i]->prev);
+
+		m = realloc(ri->seccomp_fds, sizeof(*ri->seccomp_fds) * (ri->nr_seccomp_fds + 1));
+		if (!m)
+			goto out;
+
+		ri->seccomp_fds = m;
+		ri->seccomp_fds[ri->nr_seccomp_fds++] = fds[i];
+
+		/* The last filter we should restore is the first
+		 * inherited one, because we expect the process that
+		 * didn't inherit this filter to correctly restore
+		 * what's above it.
+		 */
+		if (ri->inherited == i || !se->seccomp_filters[i]->has_prev)
+			break;
 	}
 
 	ret = 0;
@@ -273,9 +311,9 @@ out:
 	if (ret < 0) {
 		for (i = 0; i < n_fds; i++)
 			close(fds[i]);
+		seccomp_entry__free_unpacked(se, NULL);
 	}
 
-	seccomp_entry__free_unpacked(se, NULL);
 	return ret;
 }
 
@@ -288,22 +326,29 @@ void close_unused_seccomp_filters(struct pstree_item *item)
 	int i, j;
 	struct rst_info *ri = rsti(item);
 
+	BUG_ON(!se);
 	BUG_ON(!fds);
 	for (i = 0; i < n_fds; i++) {
 		bool found = false;
 
 		if (ri->seccomp_fds) {
-			for (j = 0; j < ri->nr_seccomp_fds; i++) {
-				if (fds[i] == ri->seccomp_fds[i]) {
+			for (j = 0; j < ri->nr_seccomp_fds; j++) {
+pr_err("%d checking fd %d %d\n", item->pid.real, fds[i], ri->seccomp_fds[j]);
+				if (fds[i] == ri->seccomp_fds[j]) {
 					found = true;
 					break;
 				}
 			}
 		}
 
+pr_err("%d is closing %d: %d\n", item->pid.real, fds[i], found);
+
+		/*
 		if (!found)
 			close_safe(&fds[i]);
+		*/
 	}
 
 	xfree(fds);
+	seccomp_entry__free_unpacked(se, NULL);
 }

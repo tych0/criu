@@ -303,7 +303,8 @@ handlers = {
 	'IPCNS_SHM'		: entry_handler(ipc_shm_entry),
 	'IPCNS_SEM'		: entry_handler(ipc_sem_entry),
 	'IPCNS_MSG'		: entry_handler(ipc_msg_entry),
-	'NETNS'			: entry_handler(netns_entry)
+	'NETNS'			: entry_handler(netns_entry),
+	'SECCOMP'		: entry_handler(seccomp_entry),
 	}
 
 def __rhandler(f):
