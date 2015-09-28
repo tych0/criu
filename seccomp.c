@@ -1,5 +1,6 @@
 #include <linux/filter.h>
 #include <sys/types.h>
+#include <sys/wait.h>
 #include <unistd.h>
 
 #include "config.h"
@@ -9,6 +10,7 @@
 #include "ptrace.h"
 #include "proc_parse.h"
 #include "seccomp.h"
+#include "servicefd.h"
 #include "util.h"
 
 #include "protobuf.h"
@@ -211,35 +213,14 @@ int collect_seccomp_filters(void)
 static int *fds = NULL;
 static int n_fds = 0;
 static SeccompEntry *se = NULL;
+static pid_t seccomp_filterd = 0;
 
-/* For now, we open /all/ of the seccomp fds in the root task, and just inherit
- * them all (and close them all) further on down the tree as needed. However,
- * this is not ideal: if the total number of filters across all tasks is large,
- * we'll need a large number of fds. The assumption here is that the number of
- * filters (note: multiple tasks can point to the same filter) is small since
- * most sandboxes probably have at most one or two policies installed.
- */
-int prepare_seccomp_filters(void)
-{
-	struct cr_img *img;
-	int ret = -1, i;
+static int run_seccomp_filterd(int sock) {
+
 	struct seccomp_fd fd;
 	struct sock_fprog fprog;
-
-	img = open_image(CR_FD_SECCOMP, O_RSTR);
-	if (!img)
-		return -1;
-
-	ret = pb_read_one_eof(img, &se, PB_SECCOMP);
-	close_image(img);
-	if (ret < 0)
-		return -1;
-
-	BUG_ON(!se);
-	return 0;
-}
-
-int
+	int i;
+pr_err("hello from seccomp filterd %d\n", getpid());
 
 	fd.size = sizeof(fd);
 	fd.new_prog = &fprog;
@@ -264,10 +245,51 @@ int
 			goto err;
 		}
 
-pr_err("created seccomp fd %d\n", fds[sf->id]);
 	}
 
-	return 0;
+	seccomp_entry__free_unpacked(se, NULL);
+
+	/* wait until we are killed */
+	while (1) {
+		struct msghdr hdr;
+		struct iovec iov;
+		int filter_id;
+		char c[CMSG_SPACE(sizeof(int))];
+		struct cmsghdr *ch;
+
+		hdr.msg_iov = &iov;
+		hdr.msg_iovlen = 1;
+		iov.iov_base = &filter_id;
+		iov.iov_len = sizeof(filter_id);
+
+		if (recvmsg(sock, &hdr, 0) <= 0) {
+			pr_perror("bad seccompd msg");
+			return -1;
+		}
+
+		if (iov.iov_len != sizeof(int)) {
+			pr_err("bad msg size %ld\n", iov.iov_len);
+			return -1;
+		}
+
+		if (filter_id >= n_fds) {
+			pr_err("bad filter id %d\n", filter_id);
+			return -1;
+		}
+
+		hdr.msg_control = c;
+		hdr.msg_controllen = sizeof(c);
+		ch = CMSG_FIRSTHDR(&hdr);
+		ch->cmsg_len = CMSG_LEN(sizeof(int));
+		ch->cmsg_level = SOL_SOCKET;
+		ch->cmsg_type = SCM_RIGHTS;
+		*((int *)CMSG_DATA(ch)) = fds[filter_id];
+
+		if (sendmsg(sock, &hdr, 0) <= 0) {
+			pr_perror("seccompd send msg failed");
+			return -1;
+		}
+	}
 err:
 	if (fds) {
 		for (i = 0; i < n_fds; i++)
@@ -278,24 +300,113 @@ err:
 	return -1;
 }
 
-int fill_seccomp_fds(struct pstree_item *item)
+/* For now, we open /all/ of the seccomp fds in the root task, and just inherit
+ * them all (and close them all) further on down the tree as needed. However,
+ * this is not ideal: if the total number of filters across all tasks is large,
+ * we'll need a large number of fds. The assumption here is that the number of
+ * filters (note: multiple tasks can point to the same filter) is small since
+ * most sandboxes probably have at most one or two policies installed.
+ */
+int prepare_seccomp_filters(void)
 {
-	int i, ret = -1;
-	struct rst_info *ri = rsti(item);
+	struct cr_img *img;
+	int ret, sk[2];
+
+	img = open_image(CR_FD_SECCOMP, O_RSTR);
+	if (!img)
+		return 0; /* there were no filters */
+
+	ret = pb_read_one_eof(img, &se, PB_SECCOMP);
+	close_image(img);
+	if (ret < 0)
+		return -1;
 
 	BUG_ON(!se);
 
+	/* Same options as usernsd socket, see that for details */
+	if (socketpair(PF_UNIX, SOCK_SEQPACKET, 0, sk)) {
+		pr_perror("Can't make seccompd socket");
+		goto err_se;
+	}
+
+	seccomp_filterd = fork();
+	if (seccomp_filterd < 0) {
+		pr_perror("can't fork seccompd");
+		goto err_sk;
+	}
+
+	if (!seccomp_filterd) {
+		close(sk[0]);
+		exit(run_seccomp_filterd(sk[1]));
+	}
+
+	if (install_service_fd(SECCOMPD_SK, sk[0]) < 0) {
+		kill(seccomp_filterd, SIGKILL);
+		waitpid(seccomp_filterd, NULL, 0);
+		goto err_sk;
+	}
+
+	close(sk[1]);
+
+	return 0;
+
+err_sk:
+	close(sk[0]);
+	close(sk[1]);
+err_se:
+	seccomp_entry__free_unpacked(se, NULL);
+	return -1;
+}
+
+int fill_seccomp_fds(struct pstree_item *item)
+{
+	int i, ret = -1, sk; // s/i/filter_id
+	struct rst_info *ri = rsti(item);
+
+	BUG_ON(!se);
+	sk = get_service_fd(SECCOMPD_SK);
+
+	// TODO: send everything in one msg
 	for (i = ri->seccomp_filter; true; i = se->seccomp_filters[i]->prev) {
 		void *m;
-pr_err("pid %d gets seccomp fd %d (inherited %d)\n", getpid(), fds[i], ri->inherited);
-pr_err("next: %d\n", se->seccomp_filters[i]->prev);
+		struct msghdr hdr;
+		struct iovec iov;
+		struct cmsghdr *ch;
+		int fd = -1;
+
+		hdr.msg_iov = &iov;
+		hdr.msg_iovlen = 1;
+		iov.iov_base = &i;
+		iov.iov_len = sizeof(i);
+
+		if (sendmsg(sk, &hdr, 0) <= 0) {
+			pr_perror("send seccomp msg failed");
+			goto out;
+		}
+
+		if (recvmsg(sk, &hdr, 0) <= 0) {
+			pr_perror("recv seccomp msg failed");
+			goto out;
+		}
+
+		ch = CMSG_FIRSTHDR(&hdr);
+		if (ch && ch->cmsg_len == CMSG_LEN(sizeof(int))) {
+			BUG_ON(ch->cmsg_level != SOL_SOCKET);
+			BUG_ON(ch->cmsg_type != SCM_RIGHTS);
+			fd = *((int *)CMSG_DATA(ch));
+		}
+
+		if (fd < 0) {
+			pr_err("didn't get fd back from seccompd msg\n");
+			goto out;
+		}
 
 		m = realloc(ri->seccomp_fds, sizeof(*ri->seccomp_fds) * (ri->nr_seccomp_fds + 1));
 		if (!m)
 			goto out;
 
 		ri->seccomp_fds = m;
-		ri->seccomp_fds[ri->nr_seccomp_fds++] = fds[i];
+		ri->seccomp_fds[ri->nr_seccomp_fds++] = fd;
 
 		/* The last filter we should restore is the first
 		 * inherited one, because we expect the process that
@@ -308,12 +419,7 @@ pr_err("next: %d\n", se->seccomp_filters[i]->prev);
 
 	ret = 0;
 out:
-	if (ret < 0) {
-		for (i = 0; i < n_fds; i++)
-			close(fds[i]);
-		seccomp_entry__free_unpacked(se, NULL);
-	}
-
+	seccomp_entry__free_unpacked(se, NULL);
 	return ret;
 }
 
@@ -343,10 +449,8 @@ pr_err("%d checking fd %d %d\n", item->pid.real, fds[i], ri->seccomp_fds[j]);
 
 pr_err("%d is closing %d: %d\n", item->pid.real, fds[i], found);
 
-		/*
 		if (!found)
 			close_safe(&fds[i]);
-		*/
 	}
 
 	xfree(fds);

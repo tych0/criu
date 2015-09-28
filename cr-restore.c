@@ -1788,6 +1788,9 @@ static int restore_root_task(struct pstree_item *init)
 	if (prepare_namespace_before_tasks())
 		return -1;
 
+	if (prepare_seccomp_filters())
+		return -1;
+
 	futex_set(&task_entries->nr_in_progress,
 			stage_participants(CR_STATE_RESTORE_NS));
 
