@@ -4,6 +4,8 @@
 #include <linux/seccomp.h>
 #include <linux/filter.h>
 
+#include "protobuf/core.pb-c.h"
+
 #ifndef SECCOMP_MODE_DISABLED
 #define SECCOMP_MODE_DISABLED 0
 #endif
@@ -51,6 +53,6 @@ struct pstree_item *item;
 
 extern int collect_seccomp_filters(void);
 extern int prepare_seccomp_filters(void);
-extern int fill_seccomp_fds(struct pstree_item *item);
+extern int fill_seccomp_fds(struct pstree_item *item, CoreEntry *core);
 extern void close_unused_seccomp_filters(struct pstree_item *item);
 #endif

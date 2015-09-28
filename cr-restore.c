@@ -242,10 +242,6 @@ static int root_prepare_shared(void)
 	if (ret)
 		goto err;
 
-	ret = prepare_seccomp_filters();
-	if (ret)
-		goto err;
-
 	show_saved_shmems();
 	show_saved_files();
 err:
@@ -825,7 +821,7 @@ static int restore_one_alive_task(int pid, CoreEntry *core)
 	if (prepare_fds(current))
 		return -1;
 
-	if (fill_seccomp_fds(item) < 0)
+	if (fill_seccomp_fds(current, core))
 		return -1;
 
 	if (prepare_file_locks(pid))
@@ -1085,16 +1081,6 @@ static inline int fork_with_pid(struct pstree_item *item)
 		rsti(item)->cg_set = ca.core->tc->cg_set;
 
 		rsti(item)->has_seccomp = ca.core->tc->seccomp_mode != SECCOMP_MODE_DISABLED;
-
-		if (ca.core->tc->seccomp_mode == SECCOMP_MODE_FILTER) {
-			BUG_ON(!ca.core->tc->has_seccomp_filter);
-			rsti(item)->seccomp_filter = ca.core->tc->seccomp_filter;
-
-			if (ca.core->tc->has_inherited)
-				rsti(item)->inherited = ca.core->tc->inherited;
-			else
-				rsti(item)->inherited = -1;
-		}
 
 		if (item->state == TASK_DEAD)
 			rsti(item->parent)->nr_zombies++;
@@ -2832,7 +2818,7 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 		goto err_nv;
 
 	memcpy(seccomp_filters, rsti(current)->seccomp_fds, seccomp_filters_len * sizeof(int));
-	close_unused_seccomp_filters(current);
+	xfree(rsti(current)->seccomp_fds);
 
 	rst_mem_size = rst_mem_lock();
 	restore_bootstrap_len = restorer_len + args_len + rst_mem_size;

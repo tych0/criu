@@ -220,7 +220,7 @@ static int run_seccomp_filterd(int sock) {
 	struct seccomp_fd fd;
 	struct sock_fprog fprog;
 	int i;
-pr_err("hello from seccomp filterd %d\n", getpid());
+pr_err("hello from seccomp filterd %d %d\n", getpid(), sock);
 
 	fd.size = sizeof(fd);
 	fd.new_prog = &fprog;
@@ -257,6 +257,12 @@ pr_err("hello from seccomp filterd %d\n", getpid());
 		char c[CMSG_SPACE(sizeof(int))];
 		struct cmsghdr *ch;
 
+		hdr.msg_name = NULL;
+		hdr.msg_namelen = 0;
+		hdr.msg_flags = 0;
+
+		hdr.msg_control = 0;
+		hdr.msg_controllen = 0;
 		hdr.msg_iov = &iov;
 		hdr.msg_iovlen = 1;
 		iov.iov_base = &filter_id;
@@ -358,21 +364,32 @@ err_se:
 	return -1;
 }
 
-int fill_seccomp_fds(struct pstree_item *item)
+int fill_seccomp_fds(struct pstree_item *item, CoreEntry *core)
 {
 	int i, ret = -1, sk; // s/i/filter_id
 	struct rst_info *ri = rsti(item);
 
+pr_err("%d has seccomp mode %d (item: %p)\n", getpid(), core->tc->seccomp_mode, item);
+	if (core->tc->seccomp_mode != SECCOMP_MODE_FILTER)
+		return 0;
+
+pr_err("filling seccomp fds in %d\n", getpid());
 	BUG_ON(!se);
 	sk = get_service_fd(SECCOMPD_SK);
 
 	// TODO: send everything in one msg
-	for (i = ri->seccomp_filter; true; i = se->seccomp_filters[i]->prev) {
+	for (i = core->tc->seccomp_filter; true; i = se->seccomp_filters[i]->prev) {
 		void *m;
 		struct msghdr hdr;
 		struct iovec iov;
 		struct cmsghdr *ch;
 		int fd = -1;
+		char buf[CMSG_SPACE(sizeof(int))];
+
+		hdr.msg_name = NULL;
+		hdr.msg_namelen = 0;
+		hdr.msg_flags = 0;
+		hdr.msg_controllen = 0;
 
 		hdr.msg_iov = &iov;
 		hdr.msg_iovlen = 1;
@@ -383,6 +400,9 @@ int fill_seccomp_fds(struct pstree_item *item)
 			pr_perror("send seccomp msg failed");
 			goto out;
 		}
+
+		hdr.msg_controllen = sizeof(buf);
+		hdr.msg_control = buf;
 
 		if (recvmsg(sk, &hdr, 0) <= 0) {
 			pr_perror("recv seccomp msg failed");
@@ -401,6 +421,8 @@ int fill_seccomp_fds(struct pstree_item *item)
 			goto out;
 		}
 
+		pr_err("reallocing: %p\n", ri);
+
 		m = realloc(ri->seccomp_fds, sizeof(*ri->seccomp_fds) * (ri->nr_seccomp_fds + 1));
 		if (!m)
 			goto out;
@@ -413,7 +435,7 @@ int fill_seccomp_fds(struct pstree_item *item)
 		 * didn't inherit this filter to correctly restore
 		 * what's above it.
 		 */
-		if (ri->inherited == i || !se->seccomp_filters[i]->has_prev)
+		if (core->tc->inherited == i || !se->seccomp_filters[i]->has_prev)
 			break;
 	}
 
