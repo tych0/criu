@@ -334,7 +334,7 @@ static int restore_signals(siginfo_t *ptr, int nr, bool group)
 	return 0;
 }
 
-static void restore_seccomp(struct task_restore_args *args)
+static void restore_seccomp(struct task_restore_args *args, bool close)
 {
 	switch (args->seccomp_mode) {
 	case SECCOMP_MODE_DISABLED:
@@ -353,12 +353,15 @@ static void restore_seccomp(struct task_restore_args *args)
 			int ret;
 			arg.install_fd = args->seccomp_filters[i];
 
+pr_err("%ld setting seccomp fd %d (i: %d)\n", sys_gettid(), arg.install_fd, i);
+
 			if ((ret = sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_INSTALL, (char *) &arg)) < 0) {
 				pr_err("%ld failed seccomp fd: %d\n", sys_getpid(), ret);
 				goto die;
 			}
 
-			sys_close(args->seccomp_filters[i]);
+			if (close)
+				sys_close(args->seccomp_filters[i]);
 		}
 		return;
 	}
@@ -462,7 +465,7 @@ long __export_restore_thread(struct thread_restore_args *args)
 	restore_finish_stage(CR_STATE_RESTORE_CREDS);
 	futex_dec_and_wake(&thread_inprogress);
 
-	restore_seccomp(args->ta);
+	restore_seccomp(args->ta, false);
 
 	new_sp = (long)rt_sigframe + SIGFRAME_OFFSET;
 	rst_sigreturn(new_sp);
@@ -1300,7 +1303,7 @@ long __export_restore_task(struct task_restore_args *args)
 
 	restore_posix_timers(args);
 
-	restore_seccomp(args);
+	restore_seccomp(args, true);
 
 	sys_munmap(args->rst_mem, args->rst_mem_size);
 
