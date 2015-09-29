@@ -220,7 +220,6 @@ static int run_seccomp_filterd(int sock) {
 	struct seccomp_fd fd;
 	struct sock_fprog fprog;
 	int i;
-pr_err("hello from seccomp filterd %d %d\n", getpid(), sock);
 
 	fd.size = sizeof(fd);
 	fd.new_prog = &fprog;
@@ -369,11 +368,9 @@ int fill_seccomp_fds(struct pstree_item *item, CoreEntry *core)
 	int i, ret = -1, sk; // s/i/filter_id
 	struct rst_info *ri = rsti(item);
 
-pr_err("%d has seccomp mode %d (item: %p)\n", getpid(), core->tc->seccomp_mode, item);
 	if (core->tc->seccomp_mode != SECCOMP_MODE_FILTER)
 		return 0;
 
-pr_err("filling seccomp fds in %d\n", getpid());
 	BUG_ON(!se);
 	sk = get_service_fd(SECCOMPD_SK);
 
@@ -421,8 +418,6 @@ pr_err("filling seccomp fds in %d\n", getpid());
 			goto out;
 		}
 
-		pr_err("reallocing: %p\n", ri);
-
 		m = realloc(ri->seccomp_fds, sizeof(*ri->seccomp_fds) * (ri->nr_seccomp_fds + 1));
 		if (!m)
 			goto out;
@@ -445,36 +440,30 @@ out:
 	return ret;
 }
 
-/* This closes any seccomp fds that aren't used by this task in preparation for
- * entry into the restorer blob (which isntalls the filters and then closes the
- * remaining fds).
- */
-void close_unused_seccomp_filters(struct pstree_item *item)
+int stop_seccompd(void)
 {
-	int i, j;
-	struct rst_info *ri = rsti(item);
+	seccomp_entry__free_unpacked(se, NULL);
+	if (seccomp_filterd > 0) {
+		int status = -1;
+		sigset_t blockmask, oldmask;
 
-	BUG_ON(!se);
-	BUG_ON(!fds);
-	for (i = 0; i < n_fds; i++) {
-		bool found = false;
+		close_service_fd(SECCOMPD_SK);
 
-		if (ri->seccomp_fds) {
-			for (j = 0; j < ri->nr_seccomp_fds; j++) {
-pr_err("%d checking fd %d %d\n", item->pid.real, fds[i], ri->seccomp_fds[j]);
-				if (fds[i] == ri->seccomp_fds[j]) {
-					found = true;
-					break;
-				}
-			}
+		sigemptyset(&blockmask);
+		sigaddset(&blockmask, SIGCHLD);
+		sigprocmask(SIG_BLOCK, &blockmask, &oldmask);
+
+		kill(seccomp_filterd, SIGKILL);
+		waitpid(seccomp_filterd, &status, 0);
+		sigprocmask(SIG_BLOCK, &oldmask, NULL);
+
+		seccomp_filterd = 0;
+
+		if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL) {
+			pr_err("abnormal seccompd exit %d\n", status);
+			return -1;
 		}
-
-pr_err("%d is closing %d: %d\n", item->pid.real, fds[i], found);
-
-		if (!found)
-			close_safe(&fds[i]);
 	}
 
-	xfree(fds);
-	seccomp_entry__free_unpacked(se, NULL);
+	return 0;
 }

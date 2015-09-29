@@ -1866,6 +1866,9 @@ static int restore_root_task(struct pstree_item *init)
 	if (ret < 0)
 		goto out_kill;
 
+	if (stop_seccompd() < 0)
+		goto out_kill;
+
 	ret = move_veth_to_bridge();
 	if (ret < 0)
 		goto out_kill;
@@ -1949,6 +1952,7 @@ out:
 	try_clean_remaps(mnt_ns_fd);
 	cleanup_mnt_ns();
 	stop_usernsd();
+	stop_seccompd();
 	__restore_switch_stage(CR_STATE_FAIL);
 	pr_err("Restoring FAILED.\n");
 	return -1;

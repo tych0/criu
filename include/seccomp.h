@@ -54,5 +54,5 @@ struct pstree_item *item;
 extern int collect_seccomp_filters(void);
 extern int prepare_seccomp_filters(void);
 extern int fill_seccomp_fds(struct pstree_item *item, CoreEntry *core);
-extern void close_unused_seccomp_filters(struct pstree_item *item);
+extern int stop_seccompd(void);
 #endif
