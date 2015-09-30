@@ -49,8 +49,13 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 
 		fd = ptrace(PTRACE_SECCOMP_GET_FILTER_FD, item->pid.real, NULL, i);
 		if (fd < 0) {
-			/* end of the search */
 			if (errno == EINVAL) {
+				if (!filters) {
+					pr_err("dumping seccomp filters not supported\n");
+					return -1;
+				}
+
+				/* end of the search */
 				goto save_filters;
 			} else
 				goto out;

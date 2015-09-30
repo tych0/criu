@@ -688,6 +688,7 @@ static int dump_task_core_all(struct pstree_item *item,
 
 		if (creds->seccomp_mode == SECCOMP_MODE_FILTER) {
 			core->tc->has_seccomp_filter = true;
+			BUG_ON(!creds->last_filter);
 			core->tc->seccomp_filter = creds->last_filter->id;
 			if (creds->inherited) {
 				core->tc->has_inherited = true;
@@ -1199,14 +1200,6 @@ static int dump_one_task(struct pstree_item *item)
 		pr_err("Dump %d signals failed %d\n", pid, ret);
 		goto err;
 	}
-
-	/* XXX
-	if (dmpi(item)->pi_creds->seccomp_mode == SECCOMP_MODE_FILTER &&
-			dump_seccomp_filters(pid, dmpi(item)->pi_creds) < 0) {
-		pr_err("Dump %d seccomp filters failed\n", pid);
-		goto err;
-	}
-	*/
 
 	parasite_ctl = parasite_infect_seized(pid, item, &vmas);
 	if (!parasite_ctl) {

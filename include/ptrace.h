@@ -7,10 +7,6 @@
 #include "config.h"
 #include "proc_parse.h"
 
-#ifndef PTRACE_SECCOMP_GET_FILTER_FD
-#define PTRACE_SECCOMP_GET_FILTER_FD	30
-#endif
-
 /* some constants for ptrace */
 #ifndef PTRACE_SEIZE
 # define PTRACE_SEIZE		0x4206
@@ -18,6 +14,10 @@
 
 #ifndef PTRACE_O_SUSPEND_SECCOMP
 # define PTRACE_O_SUSPEND_SECCOMP (1 << 21)
+#endif
+
+#ifndef PTRACE_SECCOMP_GET_FILTER_FD
+#define PTRACE_SECCOMP_GET_FILTER_FD	40
 #endif
 
 #ifndef PTRACE_INTERRUPT
