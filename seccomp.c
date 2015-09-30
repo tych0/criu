@@ -26,7 +26,7 @@ static struct seccomp_info *find_inherited(struct pstree_item *parent, int filte
 
 	while (info) {
 
-		if (!sys_kcmp(pid, pid, KCMP_FILE_PRIVATE_DATA, filter, info->fd))
+		if (!sys_kcmp(pid, pid, KCMP_FILE, filter, info->fd))
 			return info;
 
 		info = info->prev;
@@ -63,15 +63,22 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 
 		inherited = find_inherited(item->parent, fd);
 		if (inherited) {
-			/* if this is the first filter we inherited, we can
-			 * close this FD and just refer to that filter chain
-			 */
 			close(fd);
 			dmpi(item)->pi_creds->inherited = inherited;
 
-			for (cursor = filters; cursor->prev; cursor = cursor->prev)
-				;
-			cursor->prev = inherited;
+			/* If this is the first filter, we're simply inheriting
+			 * everything. If it's not, then we should set the
+			 * inherited filter to the parent of the filter at the
+			 * top of this chain.
+			 */
+			if (!filters) {
+				filters = inherited;
+			} else {
+				for (cursor = filters; cursor->prev; cursor = cursor->prev)
+					;
+				cursor->prev = inherited;
+			}
+
 			goto save_filters;
 		}
 
