@@ -9,6 +9,7 @@ enum kcmp_type {
 	KCMP_SIGHAND,
 	KCMP_IO,
 	KCMP_SYSVSEM,
+	KCMP_SECCOMP_FD,
 
 	KCMP_TYPES,
 };

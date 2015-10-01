@@ -26,7 +26,7 @@ static struct seccomp_info *find_inherited(struct pstree_item *parent, int filte
 
 	while (info) {
 
-		if (!sys_kcmp(pid, pid, KCMP_FILE, filter, info->fd))
+		if (!sys_kcmp(pid, pid, KCMP_SECCOMP_FD, filter, info->fd))
 			return info;
 
 		info = info->prev;
