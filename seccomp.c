@@ -64,7 +64,6 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 		inherited = find_inherited(item->parent, fd);
 		if (inherited) {
 			close(fd);
-			dmpi(item)->pi_creds->inherited = inherited;
 
 			/* If this is the first filter, we're simply inheriting
 			 * everything. If it's not, then we should set the
@@ -146,8 +145,6 @@ static int dump_seccomp_info(struct seccomp_info *info, SeccompFilter **filters)
 		return -1;
 	seccomp_filter__init(filter);
 
-	filter->id = info->id;
-
 	if (info->prev) {
 		filter->has_prev = true;
 		filter->prev = info->prev->id;
@@ -222,43 +219,71 @@ int collect_seccomp_filters(void)
 }
 
 /* Populated on restore by prepare_seccomp_filters */
-static int *fds = NULL;
-static int n_fds = 0;
-static SeccompEntry *se = NULL;
 static pid_t seccomp_filterd = 0;
 
-static int run_seccomp_filterd(int sock) {
-
+/* seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_NEW, ...) requires us to pass the
+ * parent seccomp fd at creation time. So, we need to find all the parents
+ * first and initialize them. Here's a helper to do that.
+ */
+static int initialize_seccomp_chain(SeccompEntry *se, int *fds, uint32_t prog_id)
+{
+	SeccompFilter *sf = se->seccomp_filters[prog_id];
 	struct seccomp_fd fd;
 	struct sock_fprog fprog;
-	int i;
+
+	if (fds[prog_id] >= 0)
+		return 0;
+
+	if (sf->has_prev && initialize_seccomp_chain(se, fds, sf->prev) < 0)
+		return -1;
 
 	fd.size = sizeof(fd);
 	fd.new_prog = &fprog;
 
-	fds = xmalloc(sizeof(*fds) * se->n_seccomp_filters);
-	if (!fds)
-		goto err;
-	n_fds = se->n_seccomp_filters;
+	BUG_ON(sf->filter.len % sizeof(struct sock_filter));
+	fprog.len = sf->filter.len / sizeof(struct sock_filter);
+	fprog.filter = (struct sock_filter *) sf->filter.data;
 
-	for (i = 0; i < se->n_seccomp_filters; i++) {
-		SeccompFilter *sf = se->seccomp_filters[i];
-
-		BUG_ON(sf->filter.len % sizeof(struct sock_filter));
-
-		fprog.len = sf->filter.len / sizeof(struct sock_filter);
-		fprog.filter = (struct sock_filter *) sf->filter.data;
-
-		fds[sf->id] = sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_NEW, (char *) &fd);
-		if (fds[sf->id] < 0) {
-			errno = -fds[sf->id];
-			pr_perror("importing seccomp program failed");
-			goto err;
-		}
-
+	fd.new_parent = -1;
+	if (sf->has_prev) {
+		BUG_ON(fds[sf->prev] < 0);
+		fd.new_parent = fds[sf->prev];
 	}
 
-	seccomp_entry__free_unpacked(se, NULL);
+	fds[prog_id] = sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_NEW, (char *) &fd);
+	if (fds[prog_id] < 0) {
+		errno = -fds[prog_id];
+		pr_perror("importing seccomp program failed");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int run_seccomp_filterd(struct cr_img *img, int sock)
+{
+	uint32_t i;
+	int ret;
+	int *fds = NULL;
+	SeccompEntry *se = NULL;
+
+	ret = pb_read_one_eof(img, &se, PB_SECCOMP);
+	close_image(img);
+	if (ret < 0)
+		return -1;
+
+	BUG_ON(!se);
+
+	fds = xmalloc(sizeof(*fds) * se->n_seccomp_filters);
+	if (!fds)
+		return -1;
+
+	memset(fds, 0xff, sizeof(*fds) * se->n_seccomp_filters);
+
+	for (i = 0; i < se->n_seccomp_filters; i++) {
+		if (initialize_seccomp_chain(se, fds, i) < 0)
+			goto err;
+	}
 
 	/* wait until we are killed */
 	while (1) {
@@ -281,17 +306,17 @@ static int run_seccomp_filterd(int sock) {
 
 		if (recvmsg(sock, &hdr, 0) <= 0) {
 			pr_perror("bad seccompd msg");
-			return -1;
+			goto err;
 		}
 
 		if (iov.iov_len != sizeof(int)) {
 			pr_err("bad msg size %ld\n", iov.iov_len);
-			return -1;
+			goto err;
 		}
 
-		if (filter_id >= n_fds) {
+		if (filter_id >= se->n_seccomp_filters) {
 			pr_err("bad filter id %d\n", filter_id);
-			return -1;
+			goto err;
 		}
 
 		hdr.msg_control = c;
@@ -304,17 +329,18 @@ static int run_seccomp_filterd(int sock) {
 
 		if (sendmsg(sock, &hdr, 0) <= 0) {
 			pr_perror("seccompd send msg failed");
-			return -1;
+			goto err;
 		}
 	}
+
 err:
-	if (fds) {
-		for (i = 0; i < n_fds; i++)
+	for (i = 0; i < se->n_seccomp_filters; i++) {
+		if (fds[i] >= 0)
 			close(fds[i]);
 	}
 
 	seccomp_entry__free_unpacked(se, NULL);
-	return -1;
+	exit(-1);
 }
 
 /* For now, we open /all/ of the seccomp fds in the root task, and just inherit
@@ -326,24 +352,17 @@ err:
  */
 int prepare_seccomp_filters(void)
 {
+	int sk[2];
 	struct cr_img *img;
-	int ret, sk[2];
 
 	img = open_image(CR_FD_SECCOMP, O_RSTR);
 	if (!img)
 		return 0; /* there were no filters */
 
-	ret = pb_read_one_eof(img, &se, PB_SECCOMP);
-	close_image(img);
-	if (ret < 0)
-		return -1;
-
-	BUG_ON(!se);
-
 	/* Same options as usernsd socket, see that for details */
 	if (socketpair(PF_UNIX, SOCK_SEQPACKET, 0, sk)) {
 		pr_perror("Can't make seccompd socket");
-		goto err_se;
+		goto err_img;
 	}
 
 	seccomp_filterd = fork();
@@ -354,7 +373,7 @@ int prepare_seccomp_filters(void)
 
 	if (!seccomp_filterd) {
 		close(sk[0]);
-		exit(run_seccomp_filterd(sk[1]));
+		exit(run_seccomp_filterd(img, sk[1]));
 	}
 
 	if (install_service_fd(SECCOMPD_SK, sk[0]) < 0) {
@@ -370,111 +389,94 @@ int prepare_seccomp_filters(void)
 err_sk:
 	close(sk[0]);
 	close(sk[1]);
-err_se:
-	seccomp_entry__free_unpacked(se, NULL);
+err_img:
+	close_image(img);
 	return -1;
 }
 
-int fill_seccomp_fds(struct pstree_item *item, CoreEntry *core)
+int get_seccomp_fd(struct pstree_item *item, CoreEntry *core)
 {
-	int i, ret = -1, sk; // s/i/filter_id
+	int ret = -1, sk, fd = -1;;
 	struct rst_info *ri = rsti(item);
+	struct msghdr hdr;
+	struct iovec iov;
+	struct cmsghdr *ch;
+	char buf[CMSG_SPACE(sizeof(int))];
 
-	if (core->tc->seccomp_mode != SECCOMP_MODE_FILTER)
+	if (core->tc->seccomp_mode != SECCOMP_MODE_FILTER) {
+		ri->seccomp_fd = -1;
 		return 0;
-
-	BUG_ON(!se);
-	sk = get_service_fd(SECCOMPD_SK);
-
-	// TODO: send everything in one msg
-	for (i = core->tc->seccomp_filter; true; i = se->seccomp_filters[i]->prev) {
-		void *m;
-		struct msghdr hdr;
-		struct iovec iov;
-		struct cmsghdr *ch;
-		int fd = -1;
-		char buf[CMSG_SPACE(sizeof(int))];
-
-		hdr.msg_name = NULL;
-		hdr.msg_namelen = 0;
-		hdr.msg_flags = 0;
-		hdr.msg_controllen = 0;
-
-		hdr.msg_iov = &iov;
-		hdr.msg_iovlen = 1;
-		iov.iov_base = &i;
-		iov.iov_len = sizeof(i);
-
-		if (sendmsg(sk, &hdr, 0) <= 0) {
-			pr_perror("send seccomp msg failed");
-			goto out;
-		}
-
-		hdr.msg_controllen = sizeof(buf);
-		hdr.msg_control = buf;
-
-		if (recvmsg(sk, &hdr, 0) <= 0) {
-			pr_perror("recv seccomp msg failed");
-			goto out;
-		}
-
-		ch = CMSG_FIRSTHDR(&hdr);
-		if (ch && ch->cmsg_len == CMSG_LEN(sizeof(int))) {
-			BUG_ON(ch->cmsg_level != SOL_SOCKET);
-			BUG_ON(ch->cmsg_type != SCM_RIGHTS);
-			fd = *((int *)CMSG_DATA(ch));
-		}
-
-		if (fd < 0) {
-			pr_err("didn't get fd back from seccompd msg\n");
-			goto out;
-		}
-
-		m = realloc(ri->seccomp_fds, sizeof(*ri->seccomp_fds) * (ri->nr_seccomp_fds + 1));
-		if (!m)
-			goto out;
-
-		ri->seccomp_fds = m;
-		ri->seccomp_fds[ri->nr_seccomp_fds++] = fd;
-
-		/* The last filter we should restore is the first
-		 * inherited one, because we expect the process that
-		 * didn't inherit this filter to correctly restore
-		 * what's above it.
-		 */
-		if (core->tc->inherited == i || !se->seccomp_filters[i]->has_prev)
-			break;
 	}
 
+	BUG_ON(seccomp_filterd < 0);
+	sk = get_service_fd(SECCOMPD_SK);
+
+	BUG_ON(!core->tc->has_seccomp_filter);
+	hdr.msg_name = NULL;
+	hdr.msg_namelen = 0;
+	hdr.msg_flags = 0;
+	hdr.msg_controllen = 0;
+
+	hdr.msg_iov = &iov;
+	hdr.msg_iovlen = 1;
+	iov.iov_base = &core->tc->seccomp_filter;
+	iov.iov_len = sizeof(core->tc->seccomp_filter);
+
+	if (sendmsg(sk, &hdr, 0) <= 0) {
+		pr_perror("send seccomp msg failed");
+		goto out;
+	}
+
+	hdr.msg_controllen = sizeof(buf);
+	hdr.msg_control = buf;
+
+	if (recvmsg(sk, &hdr, 0) <= 0) {
+		pr_perror("recv seccomp msg failed");
+		goto out;
+	}
+
+	ch = CMSG_FIRSTHDR(&hdr);
+	if (ch && ch->cmsg_len == CMSG_LEN(sizeof(int))) {
+		BUG_ON(ch->cmsg_level != SOL_SOCKET);
+		BUG_ON(ch->cmsg_type != SCM_RIGHTS);
+		fd = *((int *)CMSG_DATA(ch));
+	}
+
+	if (fd < 0) {
+		pr_err("didn't get fd back from seccompd msg\n");
+		goto out;
+	}
+
+	ri->seccomp_fd = fd;
 	ret = 0;
+
 out:
-	seccomp_entry__free_unpacked(se, NULL);
 	return ret;
 }
 
 int stop_seccompd(void)
 {
-	seccomp_entry__free_unpacked(se, NULL);
-	if (seccomp_filterd > 0) {
-		int status = -1;
-		sigset_t blockmask, oldmask;
+	if (seccomp_filterd <= 0)
+		return 0;
 
-		close_service_fd(SECCOMPD_SK);
+	int status = -1;
+	sigset_t blockmask, oldmask;
 
-		sigemptyset(&blockmask);
-		sigaddset(&blockmask, SIGCHLD);
-		sigprocmask(SIG_BLOCK, &blockmask, &oldmask);
+	close_service_fd(SECCOMPD_SK);
 
-		kill(seccomp_filterd, SIGKILL);
-		waitpid(seccomp_filterd, &status, 0);
-		sigprocmask(SIG_BLOCK, &oldmask, NULL);
+	sigemptyset(&blockmask);
+	sigaddset(&blockmask, SIGCHLD);
+	sigprocmask(SIG_BLOCK, &blockmask, &oldmask);
 
-		seccomp_filterd = 0;
+	kill(seccomp_filterd, SIGKILL);
+	waitpid(seccomp_filterd, &status, 0);
+	sigprocmask(SIG_BLOCK, &oldmask, NULL);
 
-		if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL) {
-			pr_err("abnormal seccompd exit %d\n", status);
-			return -1;
-		}
+	seccomp_filterd = 0;
+
+	if (!WIFSIGNALED(status) || WTERMSIG(status) != SIGKILL) {
+		pr_err("abnormal seccompd exit %d\n", status);
+		return -1;
 	}
 
 	return 0;

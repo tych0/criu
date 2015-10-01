@@ -31,7 +31,10 @@ struct seccomp_fd {
 
 	union {
 		/* SECCOMP_FD_NEW */
-		struct sock_fprog	*new_prog;
+		struct {
+			struct sock_fprog	*new_prog;
+			int			new_parent;
+		};
 
 		/* SECCOMP_FD_INSTALL */
 		int			install_fd;
@@ -53,6 +56,6 @@ struct pstree_item *item;
 
 extern int collect_seccomp_filters(void);
 extern int prepare_seccomp_filters(void);
-extern int fill_seccomp_fds(struct pstree_item *item, CoreEntry *core);
+extern int get_seccomp_fd(struct pstree_item *item, CoreEntry *core);
 extern int stop_seccompd(void);
 #endif

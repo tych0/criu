@@ -1,7 +1,6 @@
 message seccomp_filter {
-	required uint32		id			= 1;
-	required bytes		filter			= 2;
-	optional uint32		prev			= 3;
+	required bytes		filter			= 1;
+	optional uint32		prev			= 2;
 }
 
 message seccomp_entry {

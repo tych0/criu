@@ -690,10 +690,6 @@ static int dump_task_core_all(struct pstree_item *item,
 			core->tc->has_seccomp_filter = true;
 			BUG_ON(!creds->last_filter);
 			core->tc->seccomp_filter = creds->last_filter->id;
-			if (creds->inherited) {
-				core->tc->has_inherited = true;
-				core->tc->inherited = creds->inherited->id;
-			}
 		}
 	}
 

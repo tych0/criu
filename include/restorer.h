@@ -138,12 +138,6 @@ struct task_restore_args {
 	pid_t				*zombies;
 	unsigned int			zombies_n;
 
-	/*
-	 * The bpf fds corresponding to the seccomp filters in the order the
-	 * filters are applied.
-	 */
-	int				*seccomp_filters;
-	unsigned int			seccomp_filters_n;
 	/* * * * * * * * * * * * * * * * * * * * */
 
 	unsigned long			task_size;
@@ -176,6 +170,7 @@ struct task_restore_args {
 	int				proc_fd;
 
 	int				seccomp_mode;
+	int				seccomp_fd;
 
 #ifdef CONFIG_VDSO
 	unsigned long			vdso_rt_size;

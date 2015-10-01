@@ -38,7 +38,6 @@ message task_core_entry {
 
 	optional seccomp_mode		seccomp_mode	= 11;
 	optional uint32			seccomp_filter	= 12;
-	optional uint32			inherited	= 13;
 }
 
 message task_kobj_ids_entry {

@@ -94,7 +94,6 @@ struct proc_status_creds {
 
 	int			seccomp_mode;
 	struct seccomp_info	*last_filter;
-	struct seccomp_info	*inherited;
 };
 
 bool proc_status_creds_eq(struct proc_status_creds *o1, struct proc_status_creds *o2);

@@ -821,7 +821,7 @@ static int restore_one_alive_task(int pid, CoreEntry *core)
 	if (prepare_fds(current))
 		return -1;
 
-	if (fill_seccomp_fds(current, core))
+	if (get_seccomp_fd(current, core))
 		return -1;
 
 	if (prepare_file_locks(pid))
@@ -2705,10 +2705,6 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	int lsm_profile_len = 0;
 	unsigned long lsm_pos = 0;
 
-	int *seccomp_filters = NULL;
-	int seccomp_filters_len = 0;
-	unsigned long seccomp_filters_pos;
-
 	struct vm_area_list self_vmas;
 	struct vm_area_list *vmas = &rsti(current)->vmas;
 	int i;
@@ -2814,15 +2810,6 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 		xfree(rendered);
 
 	}
-
-	seccomp_filters_len = rsti(current)->nr_seccomp_fds;
-	seccomp_filters_pos = rst_mem_cpos(RM_PRIVATE);
-	seccomp_filters = rst_mem_alloc(seccomp_filters_len * sizeof(int), RM_PRIVATE);
-	if (!seccomp_filters)
-		goto err_nv;
-
-	memcpy(seccomp_filters, rsti(current)->seccomp_fds, seccomp_filters_len * sizeof(int));
-	xfree(rsti(current)->seccomp_fds);
 
 	rst_mem_size = rst_mem_lock();
 	restore_bootstrap_len = restorer_len + args_len + rst_mem_size;
@@ -2946,11 +2933,11 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	remap_array(rlims,	  rlims_nr, rlims_cpos);
 	remap_array(helpers,	  n_helpers, helpers_pos);
 	remap_array(zombies,	  n_zombies, zombies_pos);
-	remap_array(seccomp_filters,	  seccomp_filters_len, seccomp_filters_pos);
 
 #undef remap_array
 
 	task_args->seccomp_mode = core->tc->seccomp_mode;
+	task_args->seccomp_fd = rsti(current)->seccomp_fd;
 
 	if (lsm)
 		task_args->creds.lsm_profile = rst_mem_remap_ptr(lsm_pos, RM_PRIVATE);

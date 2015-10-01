@@ -344,20 +344,16 @@ static void restore_seccomp(struct task_restore_args *args, bool close)
 			goto die;
 		return;
 	case SECCOMP_MODE_FILTER: {
-		int i;
-		cr_seccomp_fd arg;
+		cr_seccomp_fd arg = {
+			.size = sizeof(arg),
+			.install_fd = args->seccomp_fd,
+		};
 
-		arg.size = sizeof(arg);
+		if (sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_INSTALL, (char *) &arg) < 0)
+			goto die;
 
-		for (i = args->seccomp_filters_n - 1; i >= 0; i--) {
-			arg.install_fd = args->seccomp_filters[i];
-
-			if (sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_INSTALL, (char *) &arg) < 0)
-				goto die;
-
-			if (close)
-				sys_close(args->seccomp_filters[i]);
-		}
+		if (close)
+			sys_close(args->seccomp_fd);
 		return;
 	}
 	default:
