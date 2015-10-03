@@ -192,6 +192,9 @@ static int root_prepare_shared(void)
 	if (prepare_remaps())
 		return -1;
 
+	if (prepare_seccomp_filters())
+		return -1;
+
 	for (i = 0; i < ARRAY_SIZE(cinfos); i++) {
 		ret = collect_image(cinfos[i]);
 		if (ret)
@@ -1772,9 +1775,6 @@ static int restore_root_task(struct pstree_item *init)
 	}
 
 	if (prepare_namespace_before_tasks())
-		return -1;
-
-	if (prepare_seccomp_filters())
 		return -1;
 
 	futex_set(&task_entries->nr_in_progress,

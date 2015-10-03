@@ -73,7 +73,7 @@ struct proc_pid_stat {
 };
 
 struct seccomp_info {
-	int fd;
+	SeccompFilter filter;
 	int id;
 	struct seccomp_info *prev;
 };
