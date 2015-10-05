@@ -13,6 +13,7 @@
 #include "protobuf/signalfd.pb-c.h"
 #include "protobuf/fsnotify.pb-c.h"
 #include "protobuf/timerfd.pb-c.h"
+#include "protobuf/seccomp.pb-c.h"
 
 #define PROC_TASK_COMM_LEN	32
 #define PROC_TASK_COMM_LEN_FMT	"(%31s"

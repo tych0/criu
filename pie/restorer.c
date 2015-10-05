@@ -334,7 +334,7 @@ static int restore_signals(siginfo_t *ptr, int nr, bool group)
 	return 0;
 }
 
-static void restore_seccomp(struct task_restore_args *args, bool close)
+static void restore_seccomp(struct task_restore_args *args)
 {
 	switch (args->seccomp_mode) {
 	case SECCOMP_MODE_DISABLED:
@@ -344,16 +344,20 @@ static void restore_seccomp(struct task_restore_args *args, bool close)
 			goto die;
 		return;
 	case SECCOMP_MODE_FILTER: {
-		cr_seccomp_fd arg = {
-			.size = sizeof(arg),
-			.install_fd = args->seccomp_fd,
-		};
+		int i;
 
-		if (sys_seccomp(SECCOMP_FILTER_FD, SECCOMP_FD_INSTALL, (char *) &arg) < 0)
-			goto die;
+		for (i = 0; i < args->seccomp_filters_n; i++) {
+			struct sock_fprog *fprog = args->seccomp_filters[i];
 
-		if (close)
-			sys_close(args->seccomp_fd);
+			/* We always TSYNC here, since we require that the
+			 * creds for all threads be the same; this means we
+			 * don't have to restore_seccomp() in threads, and that
+			 * future TSYNC behavior will be correct.
+			 */
+			if (sys_seccomp(SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, (char *) fprog) < 0)
+				goto die;
+		}
+
 		return;
 	}
 	default:
@@ -454,8 +458,6 @@ long __export_restore_thread(struct thread_restore_args *args)
 		pr_info("Restoring seccomp mode %d for %ld\n", args->ta->seccomp_mode, sys_getpid());
 
 	restore_finish_stage(CR_STATE_RESTORE_CREDS);
-
-	restore_seccomp(args->ta, false);
 
 	futex_dec_and_wake(&thread_inprogress);
 
@@ -1295,7 +1297,7 @@ long __export_restore_task(struct task_restore_args *args)
 
 	restore_posix_timers(args);
 
-	restore_seccomp(args, true);
+	restore_seccomp(args);
 
 	sys_munmap(args->rst_mem, args->rst_mem_size);
 

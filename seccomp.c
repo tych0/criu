@@ -12,6 +12,7 @@
 #include "seccomp.h"
 #include "servicefd.h"
 #include "util.h"
+#include "rst-malloc.h"
 
 #include "protobuf.h"
 #include "protobuf/seccomp.pb-c.h"
@@ -24,11 +25,11 @@ static struct seccomp_info *find_inherited(struct pstree_item *parent,
 {
 	struct seccomp_info *info = dmpi(parent)->pi_creds->last_filter;
 
-	for (info = dmpi(parent)->pi_creds->last_filter; info; info = info->prev)
+	for (info = dmpi(parent)->pi_creds->last_filter; info; info = info->prev) {
 
-		if (len != info->filter->len)
+		if (len != info->filter.filter.len)
 			continue;
-		if (!memcmp(filter, info->filter->data, len))
+		if (!memcmp(filter, info->filter.filter.data, len))
 			return info;
 	}
 
@@ -46,7 +47,7 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 
 	for (i = 0; true; i++) {
 		int len;
-		struct seccomp_info *filter, *inherited = NULL;
+		struct seccomp_info *info, *inherited = NULL;
 
 		len = ptrace(PTRACE_SECCOMP_GET_FILTER, item->pid.real, buf, i);
 		if (len < 0) {
@@ -78,22 +79,22 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 				cursor->prev = inherited;
 			}
 
-			goto save_filters;
+			goto save_infos;
 		}
 
-		filter = xmalloc(sizeof(*filter));
-		if (!filter)
+		info = xmalloc(sizeof(*info));
+		if (!info)
 			goto out;
 
-		filter->filter.len = len * sizeof(struct sock_filter)
-		filter->filter.data = xmalloc(filter->filter.len);
-		if (!filter->filter->data)
+		info->filter.filter.len = len * sizeof(struct sock_filter);
+		info->filter.filter.data = xmalloc(info->filter.filter.len);
+		if (!info->filter.filter.data)
 			goto out;
 
-		memcpy(filter->filter.data, buf, filter->filter.len);
+		memcpy(info->filter.filter.data, buf, info->filter.filter.len);
 
-		filter->prev = infos;
-		infos = filter;
+		info->prev = infos;
+		infos = info;
 	}
 
 save_infos:
@@ -117,7 +118,7 @@ out:
 	while (infos) {
 		struct seccomp_info *freeme = infos;
 		infos = infos->prev;
-		xfree(freeme->filter.data);
+		xfree(freeme->filter.filter.data);
 		xfree(freeme);
 	}
 
@@ -126,7 +127,6 @@ out:
 
 static int dump_seccomp_info(struct seccomp_info *info, SeccompFilter **filters)
 {
-	int len;
 	SeccompFilter *filter;
 
 	if (filters[info->id])
@@ -142,7 +142,7 @@ static int dump_seccomp_info(struct seccomp_info *info, SeccompFilter **filters)
 		filter->prev = info->prev->id;
 	}
 
-	filter->filter = info->filter;
+	filter = &info->filter;
 
 	return 0;
 }
@@ -217,6 +217,7 @@ static SeccompEntry *se;
 int prepare_seccomp_filters(void)
 {
 	struct cr_img *img;
+	int ret;
 
 	img = open_image(CR_FD_SECCOMP, O_RSTR);
 	if (!img)
@@ -232,69 +233,57 @@ int prepare_seccomp_filters(void)
 	return 0;
 }
 
-int collect_seccomp_filters(void)
+int seccomp_filters_get_rst_pos(CoreEntry *core, int *count, unsigned long *pos)
 {
-	current->
-out:
-	seccomp_entry__free_unpacked(se, NULL);
-}
+	SeccompFilter *sf = NULL;
+	struct sock_fprog *arr = NULL, *fprog;
+	int ret = -1;
 
-int get_seccomp_fd(struct pstree_item *item, CoreEntry *core)
-{
-	int ret = -1, sk, fd = -1;;
-	struct rst_info *ri = rsti(item);
-	struct msghdr hdr;
-	struct iovec iov;
-	struct cmsghdr *ch;
-	char buf[CMSG_SPACE(sizeof(int))];
+	*count = 0;
+	*pos = rst_mem_cpos(RM_PRIVATE);
 
-	if (core->tc->seccomp_mode != SECCOMP_MODE_FILTER) {
-		ri->seccomp_fd = -1;
-		return 0;
+	BUG_ON(core->tc->seccomp_filter > se->n_seccomp_filters);
+	sf = se->seccomp_filters[core->tc->seccomp_filter];
+
+	while (1) {
+		fprog = rst_mem_alloc(sizeof(*fprog), RM_PRIVATE);
+		if (!fprog)
+			goto out;
+
+		if (!arr)
+			arr = fprog;
+
+		BUG_ON(sf->filter.len % sizeof(struct sock_filter));
+		fprog->len = sf->filter.len / sizeof(struct sock_filter);
+
+		if (!sf->has_prev)
+			break;
+
+		sf = se->seccomp_filters[sf->prev];
+		count++;
 	}
 
-	BUG_ON(seccomp_filterd < 0);
-	sk = get_service_fd(SECCOMPD_SK);
+	/* Make a second pass to allocate/copy after the initial array is
+	 * allocated. This prevents us from having to do any pointer math in
+	 * the restorer blob.
+	 */
+	sf = se->seccomp_filters[core->tc->seccomp_filter];
+	fprog = arr;
 
-	BUG_ON(!core->tc->has_seccomp_filter);
-	hdr.msg_name = NULL;
-	hdr.msg_namelen = 0;
-	hdr.msg_flags = 0;
-	hdr.msg_controllen = 0;
+	while (1) {
+		arr->filter = rst_mem_alloc(sf->filter.len, RM_PRIVATE);
+		memcpy(arr->filter, sf->filter.data, sf->filter.len);
 
-	hdr.msg_iov = &iov;
-	hdr.msg_iovlen = 1;
-	iov.iov_base = &core->tc->seccomp_filter;
-	iov.iov_len = sizeof(core->tc->seccomp_filter);
+		if (!sf->has_prev)
+			break;
 
-	if (sendmsg(sk, &hdr, 0) <= 0) {
-		pr_perror("send seccomp msg failed");
-		goto out;
+		sf = se->seccomp_filters[sf->prev];
+		arr++;
 	}
 
-	hdr.msg_controllen = sizeof(buf);
-	hdr.msg_control = buf;
-
-	if (recvmsg(sk, &hdr, 0) <= 0) {
-		pr_perror("recv seccomp msg failed");
-		goto out;
-	}
-
-	ch = CMSG_FIRSTHDR(&hdr);
-	if (ch && ch->cmsg_len == CMSG_LEN(sizeof(int))) {
-		BUG_ON(ch->cmsg_level != SOL_SOCKET);
-		BUG_ON(ch->cmsg_type != SCM_RIGHTS);
-		fd = *((int *)CMSG_DATA(ch));
-	}
-
-	if (fd < 0) {
-		pr_err("didn't get fd back from seccompd msg\n");
-		goto out;
-	}
-
-	ri->seccomp_fd = fd;
 	ret = 0;
 
 out:
+	seccomp_entry__free_unpacked(se, NULL);
 	return ret;
 }

@@ -645,7 +645,7 @@ static int check_ptrace_dump_seccomp_filters(void)
 	int ret = 0, fd;
 
 	if (opts.check_ms_kernel) {
-		pr_warn("Skipping PTRACE_SECCOMP_GET_FILTER_FD check");
+		pr_warn("Skipping PTRACE_SECCOMP_GET_FILTER check");
 		return 0;
 	}
 
@@ -653,7 +653,7 @@ static int check_ptrace_dump_seccomp_filters(void)
 	if (pid < 0)
 		return -1;
 
-	fd = ptrace(PTRACE_SECCOMP_GET_FILTER_FD, pid);
+	fd = ptrace(PTRACE_SECCOMP_GET_FILTER, pid, NULL, 0);
 	if (fd < 0) {
 		ret = -1;
 		pr_err("Dumping seccomp filters not supported\n");

@@ -18,10 +18,7 @@
 #define SECCOMP_MODE_FILTER 2
 #endif
 
-struct pstree_item *item;
-
 extern int collect_seccomp_filters(void);
 extern int prepare_seccomp_filters(void);
-extern int get_seccomp_fd(struct pstree_item *item, CoreEntry *core);
-extern int stop_seccompd(void);
+extern int seccomp_filters_get_rst_pos(CoreEntry *item, int *count, unsigned long *pos);
 #endif

@@ -824,9 +824,6 @@ static int restore_one_alive_task(int pid, CoreEntry *core)
 	if (prepare_fds(current))
 		return -1;
 
-	if (get_seccomp_fd(current, core))
-		return -1;
-
 	if (prepare_file_locks(pid))
 		return -1;
 
@@ -1866,9 +1863,6 @@ static int restore_root_task(struct pstree_item *init)
 	if (ret < 0)
 		goto out_kill;
 
-	if (stop_seccompd() < 0)
-		goto out_kill;
-
 	ret = move_veth_to_bridge();
 	if (ret < 0)
 		goto out_kill;
@@ -1952,7 +1946,6 @@ out:
 	try_clean_remaps(mnt_ns_fd);
 	cleanup_mnt_ns();
 	stop_usernsd();
-	stop_seccompd();
 	__restore_switch_stage(CR_STATE_FAIL);
 	pr_err("Restoring FAILED.\n");
 	return -1;
@@ -2705,6 +2698,9 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	int lsm_profile_len = 0;
 	unsigned long lsm_pos = 0;
 
+	int n_seccomp_filters = 0;
+	unsigned long seccomp_filter_pos = 0;
+
 	struct vm_area_list self_vmas;
 	struct vm_area_list *vmas = &rsti(current)->vmas;
 	int i;
@@ -2890,6 +2886,9 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	if (ret < 0)
 		goto err;
 
+	if (seccomp_filters_get_rst_pos(core, &n_seccomp_filters, &seccomp_filter_pos) < 0)
+		goto err;
+
 	/*
 	 * Get a reference to shared memory area which is
 	 * used to signal if shmem restoration complete
@@ -2933,11 +2932,20 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	remap_array(rlims,	  rlims_nr, rlims_cpos);
 	remap_array(helpers,	  n_helpers, helpers_pos);
 	remap_array(zombies,	  n_zombies, zombies_pos);
+	remap_array(seccomp_filters,	n_seccomp_filters, seccomp_filter_pos);
 
 #undef remap_array
 
 	task_args->seccomp_mode = core->tc->seccomp_mode;
-	task_args->seccomp_fd = rsti(current)->seccomp_fd;
+
+	/* Above we remapped *seccomp_filters, but not **seccomp_filters, which
+	 * we do here.
+	 */
+	for (i = 0; i < n_seccomp_filters; i++) {
+		struct sock_fprog *fprog = task_args->seccomp_filters[i];
+
+		fprog->filter = rst_mem_remap_ptr((unsigned long) fprog->filter, RM_PRIVATE);
+	}
 
 	if (lsm)
 		task_args->creds.lsm_profile = rst_mem_remap_ptr(lsm_pos, RM_PRIVATE);
