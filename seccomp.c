@@ -49,7 +49,7 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 		int len;
 		struct seccomp_info *info, *inherited = NULL;
 
-		len = ptrace(PTRACE_SECCOMP_GET_FILTER, item->pid.real, buf, i);
+		len = ptrace(PTRACE_SECCOMP_GET_FILTER, item->pid.real, i, buf);
 		if (len < 0) {
 			if (errno == ENOENT) {
 				/* end of the search */
@@ -85,8 +85,9 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 		info = xmalloc(sizeof(*info));
 		if (!info)
 			goto out;
+		seccomp_filter__init(&info->filter);
 
-		info->filter.filter.len = len * sizeof(struct sock_filter);
+		info->filter.filter.len = len;
 		info->filter.filter.data = xmalloc(info->filter.filter.len);
 		if (!info->filter.filter.data)
 			goto out;
@@ -125,33 +126,11 @@ out:
 	return ret;
 }
 
-static int dump_seccomp_info(struct seccomp_info *info, SeccompFilter **filters)
-{
-	SeccompFilter *filter;
-
-	if (filters[info->id])
-		return 1;
-
-	filter = filters[info->id] = xmalloc(sizeof(*filter));
-	if (!filter)
-		return -1;
-	seccomp_filter__init(filter);
-
-	if (info->prev) {
-		filter->has_prev = true;
-		filter->prev = info->prev->id;
-	}
-
-	filter = &info->filter;
-
-	return 0;
-}
-
 static int dump_seccomp_filters(void)
 {
 	struct pstree_item *item;
 	SeccompEntry se = SECCOMP_ENTRY__INIT;
-	int ret = -1, i;
+	int ret = -1;
 
 	/* If we didn't collect any filters, don't create a seccomp image at all. */
 	if (next_filter_id == 0)
@@ -166,9 +145,8 @@ static int dump_seccomp_filters(void)
 		struct seccomp_info *cursor;
 
 		for (cursor = dmpi(item)->pi_creds->last_filter; cursor; cursor = cursor->prev) {
-			ret = dump_seccomp_info(cursor, se.seccomp_filters);
-			if (ret < 0)
-				goto out;
+			se.seccomp_filters[cursor->id] = &cursor->filter;
+
 			/* these filters were already dumped */
 			if (ret > 0)
 				break;
@@ -177,18 +155,23 @@ static int dump_seccomp_filters(void)
 
 	ret = pb_write_one(img_from_set(glob_imgset, CR_FD_SECCOMP), &se, PB_SECCOMP);
 
-out:
-	for (i = 0; i < next_filter_id; i++) {
-		if (!se.seccomp_filters[i])
-			break;
-
-		if (se.seccomp_filters[i]->filter.data)
-			xfree(se.seccomp_filters[i]->filter.data);
-
-		xfree(se.seccomp_filters[i]);
-	}
-
 	xfree(se.seccomp_filters);
+
+/* XXX: we need a way to free each seccomp_info, or mark it freed here or something.
+	for_each_pstree_item(item) {
+		struct seccomp_info *cursor;
+
+		cursor = dmpi(item)->pi_creds->last_filter;
+
+		while (cursor) {
+			struct seccomp_info *freeme = cursor;
+			cursor = cursor->prev;
+
+			xfree(freeme->filter.filter.data);
+			xfree(freeme);
+		}
+	}
+*/
 
 	return ret;
 }
@@ -236,8 +219,13 @@ int prepare_seccomp_filters(void)
 int seccomp_filters_get_rst_pos(CoreEntry *core, int *count, unsigned long *pos)
 {
 	SeccompFilter *sf = NULL;
-	struct sock_fprog *arr = NULL, *fprog;
-	int ret = -1;
+	struct sock_fprog *arr = NULL;
+	int ret = -1, i;
+
+	if (!core->tc->has_seccomp_filter) {
+		*count = 0;
+		return 0;
+	}
 
 	*count = 0;
 	*pos = rst_mem_cpos(RM_PRIVATE);
@@ -246,39 +234,35 @@ int seccomp_filters_get_rst_pos(CoreEntry *core, int *count, unsigned long *pos)
 	sf = se->seccomp_filters[core->tc->seccomp_filter];
 
 	while (1) {
-		fprog = rst_mem_alloc(sizeof(*fprog), RM_PRIVATE);
-		if (!fprog)
-			goto out;
+		(*count)++;
 
-		if (!arr)
-			arr = fprog;
+		if (!sf->has_prev)
+			break;
+
+		sf = se->seccomp_filters[sf->prev];
+	}
+
+	arr = rst_mem_alloc(sizeof(*arr) * (*count), RM_PRIVATE);
+	if (!arr)
+		goto out;
+
+	sf = se->seccomp_filters[core->tc->seccomp_filter];
+	for (i = 0; i < *count; i++) {
+		struct sock_fprog *fprog = &arr[i];
+		// XXX: this is a bit fugly; is there a better way?
+		unsigned long temp_pos = rst_mem_cpos(RM_PRIVATE);
 
 		BUG_ON(sf->filter.len % sizeof(struct sock_filter));
 		fprog->len = sf->filter.len / sizeof(struct sock_filter);
 
-		if (!sf->has_prev)
-			break;
+		fprog->filter = rst_mem_alloc(sf->filter.len, RM_PRIVATE);
+		if (!fprog->filter)
+			goto out;
+
+		memcpy(fprog->filter, sf->filter.data, sf->filter.len);
+		fprog->filter = (struct sock_filter *) temp_pos;
 
 		sf = se->seccomp_filters[sf->prev];
-		count++;
-	}
-
-	/* Make a second pass to allocate/copy after the initial array is
-	 * allocated. This prevents us from having to do any pointer math in
-	 * the restorer blob.
-	 */
-	sf = se->seccomp_filters[core->tc->seccomp_filter];
-	fprog = arr;
-
-	while (1) {
-		arr->filter = rst_mem_alloc(sf->filter.len, RM_PRIVATE);
-		memcpy(arr->filter, sf->filter.data, sf->filter.len);
-
-		if (!sf->has_prev)
-			break;
-
-		sf = se->seccomp_filters[sf->prev];
-		arr++;
 	}
 
 	ret = 0;

@@ -2807,6 +2807,10 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 
 	}
 
+	if (seccomp_filters_get_rst_pos(core, &n_seccomp_filters, &seccomp_filter_pos) < 0)
+		goto err;
+
+
 	rst_mem_size = rst_mem_lock();
 	restore_bootstrap_len = restorer_len + args_len + rst_mem_size;
 
@@ -2886,9 +2890,6 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 	if (ret < 0)
 		goto err;
 
-	if (seccomp_filters_get_rst_pos(core, &n_seccomp_filters, &seccomp_filter_pos) < 0)
-		goto err;
-
 	/*
 	 * Get a reference to shared memory area which is
 	 * used to signal if shmem restoration complete
@@ -2936,15 +2937,17 @@ static int sigreturn_restore(pid_t pid, CoreEntry *core)
 
 #undef remap_array
 
-	task_args->seccomp_mode = core->tc->seccomp_mode;
+	if (core->tc->has_seccomp_mode) {
+		task_args->seccomp_mode = core->tc->seccomp_mode;
 
-	/* Above we remapped *seccomp_filters, but not **seccomp_filters, which
-	 * we do here.
-	 */
-	for (i = 0; i < n_seccomp_filters; i++) {
-		struct sock_fprog *fprog = task_args->seccomp_filters[i];
+		/* Above we remapped *seccomp_filters, but not **seccomp_filters, which
+		 * we do here.
+		 */
+		for (i = 0; i < n_seccomp_filters; i++) {
+			struct sock_fprog *fprog = &task_args->seccomp_filters[i];
 
-		fprog->filter = rst_mem_remap_ptr((unsigned long) fprog->filter, RM_PRIVATE);
+			fprog->filter = rst_mem_remap_ptr((unsigned long) fprog->filter, RM_PRIVATE);
+		}
 	}
 
 	if (lsm)

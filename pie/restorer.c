@@ -347,7 +347,7 @@ static void restore_seccomp(struct task_restore_args *args)
 		int i;
 
 		for (i = 0; i < args->seccomp_filters_n; i++) {
-			struct sock_fprog *fprog = args->seccomp_filters[i];
+			struct sock_fprog *fprog = &args->seccomp_filters[i];
 
 			/* We always TSYNC here, since we require that the
 			 * creds for all threads be the same; this means we
