@@ -57,7 +57,6 @@ int filter_syscall(int syscall_nr)
 		.len = (unsigned short)(sizeof(filter)/sizeof(filter[0])),
 		.filter = filter,
 	};
-err("program initial code 0: %d\n", filter[0].code);
 
 	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &bpf_prog) < 0) {
 		err("prctl failed");
