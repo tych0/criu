@@ -87,7 +87,7 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 			goto out;
 		seccomp_filter__init(&info->filter);
 
-		info->filter.filter.len = len;
+		info->filter.filter.len = len * sizeof(struct sock_filter);
 		info->filter.filter.data = xmalloc(info->filter.filter.len);
 		if (!info->filter.filter.data)
 			goto out;
@@ -145,7 +145,16 @@ static int dump_seccomp_filters(void)
 		struct seccomp_info *cursor;
 
 		for (cursor = dmpi(item)->pi_creds->last_filter; cursor; cursor = cursor->prev) {
-			se.seccomp_filters[cursor->id] = &cursor->filter;
+			SeccompFilter *sf;
+
+			if (se.seccomp_filters[cursor->id])
+				continue;
+
+			sf = se.seccomp_filters[cursor->id] = &cursor->filter;
+			if (cursor->prev) {
+				sf->has_prev = true;
+				sf->prev = cursor->prev->id;
+			}
 
 			/* these filters were already dumped */
 			if (ret > 0)
