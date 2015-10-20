@@ -1,3 +1,3 @@
-import rpc
-import images
+from . import rpc
+from . import images
 from criu import *
