@@ -185,13 +185,6 @@ int collect_seccomp_filters(void)
 /* Populated on restore by prepare_seccomp_filters */
 static SeccompEntry *se;
 
-/* For now, we open /all/ of the seccomp fds in the root task, and just inherit
- * them all (and close them all) further on down the tree as needed. However,
- * this is not ideal: if the total number of filters across all tasks is large,
- * we'll need a large number of fds. The assumption here is that the number of
- * filters (note: multiple tasks can point to the same filter) is small since
- * most sandboxes probably have at most one or two policies installed.
- */
 int prepare_seccomp_filters(void)
 {
 	struct cr_img *img;
