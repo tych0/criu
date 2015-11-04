@@ -663,7 +663,6 @@ int dump_thread_core(int pid, CoreEntry *core, const struct parasite_dump_thread
 }
 
 static int dump_task_core_all(struct pstree_item *item,
-		struct parasite_ctl *ctl,
 		const struct proc_pid_stat *stat,
 		const struct parasite_dump_misc *misc,
 		const struct cr_imgset *cr_imgset)
@@ -1296,7 +1295,7 @@ static int dump_one_task(struct pstree_item *item)
 		goto err_cure;
 	}
 
-	ret = dump_task_core_all(item, parasite_ctl, &pps_buf, &misc, cr_imgset);
+	ret = dump_task_core_all(item, &pps_buf, &misc, cr_imgset);
 	if (ret) {
 		pr_err("Dump core (pid: %d) failed with %d\n", pid, ret);
 		goto err_cure;
