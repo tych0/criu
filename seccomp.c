@@ -119,7 +119,8 @@ static int dump_seccomp_filters(void)
 {
 	struct pstree_item *item;
 	SeccompEntry se = SECCOMP_ENTRY__INIT;
-	int ret = -1;
+	int ret = -1, i;
+	struct seccomp_info **tofree;
 
 	/* If we didn't collect any filters, don't create a seccomp image at all. */
 	if (next_filter_id == 0)
@@ -128,6 +129,13 @@ static int dump_seccomp_filters(void)
 	se.seccomp_filters = xzalloc(sizeof(*se.seccomp_filters) * next_filter_id);
 	if (!se.seccomp_filters)
 		return -1;
+
+	tofree = xzalloc(sizeof(*tofree) * next_filter_id);
+	if (!tofree) {
+		xfree(se.seccomp_filters);
+		return -1;
+	}
+
 	se.n_seccomp_filters = next_filter_id;
 
 	for_each_pstree_item(item) {
@@ -139,15 +147,13 @@ static int dump_seccomp_filters(void)
 			if (se.seccomp_filters[cursor->id])
 				continue;
 
+			tofree[cursor->id] = cursor;
+
 			sf = se.seccomp_filters[cursor->id] = &cursor->filter;
 			if (cursor->prev) {
 				sf->has_prev = true;
 				sf->prev = cursor->prev->id;
 			}
-
-			/* these filters were already dumped */
-			if (ret > 0)
-				break;
 		}
 	}
 
@@ -155,21 +161,12 @@ static int dump_seccomp_filters(void)
 
 	xfree(se.seccomp_filters);
 
-/* XXX: we need a way to free each seccomp_info, or mark it freed here or something.
-	for_each_pstree_item(item) {
-		struct seccomp_info *cursor;
+	for (i = 0; i < next_filter_id; i++) {
+		struct seccomp_info *freeme = tofree[i];
 
-		cursor = dmpi(item)->pi_creds->last_filter;
-
-		while (cursor) {
-			struct seccomp_info *freeme = cursor;
-			cursor = cursor->prev;
-
-			xfree(freeme->filter.filter.data);
-			xfree(freeme);
-		}
+		xfree(freeme->filter.filter.data);
+		xfree(freeme);
 	}
-*/
 
 	return ret;
 }
