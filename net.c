@@ -240,6 +240,8 @@ static int dump_one_ethernet(struct ifinfomsg *ifi, char *kind,
 		return dump_one_netdev(ND_TYPE__VETH, ifi, tb, fds, NULL);
 	if (!strcmp(kind, "tun"))
 		return dump_one_netdev(ND_TYPE__TUN, ifi, tb, fds, dump_tun_link);
+	if (!strcmp(kind, "bridge"))
+		return dump_one_netdev(ND_TYPE__BRIDGE, ifi, tb, fds, NULL);
 
 	return dump_unknown_device(ifi, kind, tb, fds);
 }
@@ -479,6 +481,9 @@ static int restore_link(NetDeviceEntry *nde, int nlsk)
 		return restore_one_link(nde, nlsk, veth_link_info);
 	case ND_TYPE__TUN:
 		return restore_one_tun(nde, nlsk);
+	case ND_TYPE__BRIDGE:
+		return restore_link_parms(nde, nlsdk);
+
 	default:
 		pr_err("Unsupported link type %d\n", nde->type);
 		break;
