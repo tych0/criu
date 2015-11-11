@@ -143,8 +143,9 @@ class ns_flavor:
 
 		if not os.access(self.root + "/.constructed", os.F_OK):
 			for dir in ["/bin", "/sbin", "/etc", "/lib", "/lib64", "/dev", "/tmp", "/usr"]:
-				os.mkdir(self.root + dir)
-				os.chmod(self.root + dir, 0777)
+				if not os.path.isdir(self.root + dir):
+					os.mkdir(self.root + dir)
+					os.chmod(self.root + dir, 0777)
 
 			os.mknod(self.root + "/dev/tty", stat.S_IFCHR, os.makedev(5, 0))
 			os.chmod(self.root + "/dev/tty", 0666)
@@ -158,8 +159,12 @@ class ns_flavor:
 			self.__copy_libs(dep)
 
 	def fini(self):
-		subprocess.check_call(["mount", "--make-private", self.root])
-		subprocess.check_call(["umount", "-l", self.root])
+		try:
+			subprocess.check_call(["mount", "--make-private", self.root])
+			subprocess.check_call(["umount", "-l", self.root])
+		except subprocess.CalledProcessError:
+			# if something went wrong and we can't unmount these, that's ok
+			pass
 
 class userns_flavor(ns_flavor):
 	def __init__(self, opts):
