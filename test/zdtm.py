@@ -165,8 +165,12 @@ class ns_flavor:
 			self.__copy_libs(dep)
 
 	def fini(self):
-		subprocess.check_call(["mount", "--make-private", self.root])
-		subprocess.check_call(["umount", "-l", self.root])
+		try:
+			# if these fail, we don't really care.
+			subprocess.check_call(["mount", "--make-private", self.root])
+			subprocess.check_call(["umount", "-l", self.root])
+		except subprocess.CalledProcessError:
+			pass
 
 class userns_flavor(ns_flavor):
 	def __init__(self, opts):
