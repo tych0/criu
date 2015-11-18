@@ -44,7 +44,8 @@ tests_root = None
 
 def clean_tests_root():
 	global tests_root
-	subprocess.call(["umount", tests_root])
+	with open(os.devnull, "rw") as null:
+		subprocess.call(["umount", tests_root], stdout=null, stderr=null)
 	if tests_root:
 		os.rmdir(tests_root)
 
