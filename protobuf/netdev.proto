@@ -19,6 +19,13 @@ enum nd_type {
 	BRIDGE		= 6;
 }
 
+message v6_address {
+	repeated uint32		addr		= 1 [(criu).ipadd = true];
+	required uint32		scope		= 2;
+	required uint32		ifindex		= 3;
+	required uint32		prefixlen	= 4;
+}
+
 message net_device_entry {
 	required nd_type type		= 1;
 	required uint32  ifindex	= 2;
@@ -31,6 +38,8 @@ message net_device_entry {
 	optional bytes address		= 7;
 
 	repeated int32 conf		= 8;
+
+	repeated v6_address v6addrs	= 9;
 }
 
 message netns_entry {

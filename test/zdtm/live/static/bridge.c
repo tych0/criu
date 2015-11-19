@@ -23,6 +23,9 @@ int add_bridge(void)
 	if (system("ip addr add 10.0.55.55/32 dev " BRIDGE_NAME))
 		return -1;
 
+	if (system("ip addr add 1234:4567::1/64 nodad dev " BRIDGE_NAME))
+		return -1;
+
 	if (system("ip link set " BRIDGE_NAME " up"))
 		return -1;
 
@@ -54,8 +57,12 @@ int main(int argc, char **argv)
 	 *
 	 * (I got this race with zdtm.py, but not with zdtm.sh; not quite sure
 	 * what the environment difference is/was.)
+	 *
+	 * Also, grep for global addresses only since we get a "free" link
+	 * local address, which isn't created with nodad but is restored with
+	 * nodad.
 	 */
-	if (system("ip addr list dev " BRIDGE_NAME " | grep inet > bridge.dump.test")) {
+	if (system("ip addr list dev " BRIDGE_NAME " | grep inet | grep global > bridge.dump.test")) {
 		pr_perror("can't save net config");
 		fail("Can't save net config");
 		goto out;
@@ -64,7 +71,7 @@ int main(int argc, char **argv)
 	test_daemon();
 	test_waitsig();
 
-	if (system("ip addr list dev " BRIDGE_NAME " | grep inet > bridge.rst.test")) {
+	if (system("ip addr list dev " BRIDGE_NAME " | grep inet | grep global > bridge.rst.test")) {
 		fail("Can't get net config");
 		goto out;
 	}

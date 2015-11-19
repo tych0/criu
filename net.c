@@ -148,6 +148,103 @@ int write_netdev_img(NetDeviceEntry *nde, struct cr_imgset *fds)
 	return pb_write_one(img_from_set(fds, CR_FD_NETDEV), nde, PB_NETDEV);
 }
 
+#define IPV6_ADDRLEN 16
+static int n_v6_addresses = 0;
+static V6Address *v6_addresses = NULL;
+
+static int collect_v6_addresses_cb(struct nlmsghdr *hdr, void *arg)
+{
+	struct ifaddrmsg *ifa;
+	struct rtattr *tb[IFA_MAX + 1];
+	int len = hdr->nlmsg_len - NLMSG_LENGTH(sizeof(*ifa));
+	void *m;
+	V6Address *cur;
+	char buf[INET6_ADDRSTRLEN];
+
+	ifa = NLMSG_DATA(hdr);
+	parse_rtattr(tb, IFA_MAX, IFA_RTA(ifa), len);
+
+	if (!inet_ntop(AF_INET6, RTA_DATA(tb[IFA_ADDRESS]), buf, sizeof(buf)))
+		pr_perror("problem printing address for idx %d\n", ifa->ifa_index);
+	else
+		pr_info("found ipv6 address for %d: %s\n", ifa->ifa_index, buf);
+
+	if (RTA_PAYLOAD(tb[IFA_ADDRESS]) != IPV6_ADDRLEN) {
+		pr_err("wrong address size %lu\n", RTA_PAYLOAD(tb[IFA_ADDRESS]));
+		return -1;
+	}
+
+	m = realloc(v6_addresses, sizeof(*v6_addresses) * (n_v6_addresses + 1));
+	if (!m)
+		return -1;
+
+	v6_addresses = m;
+	cur = &v6_addresses[n_v6_addresses++];
+
+	v6_address__init(cur);
+
+	cur->addr = xmalloc(sizeof(*cur->addr) * PB_ALEN_INET6);
+	if (!cur->addr)
+		return -1;
+
+	cur->n_addr = PB_ALEN_INET6;
+	memcpy(cur->addr, RTA_DATA(tb[IFA_ADDRESS]), IPV6_ADDRLEN);
+	cur->ifindex = ifa->ifa_index;
+	cur->scope = ifa->ifa_scope;
+	cur->prefixlen = ifa->ifa_prefixlen;
+	/* TODO: what flags should we save and restore, if any? */
+
+	return 0;
+}
+
+static int collect_v6_addresses(int nlsk)
+{
+	int ret;
+	struct {
+		struct nlmsghdr nlh;
+		struct ifaddrmsg r;
+		char buf[1024];
+	} req;
+
+	memset(&req, 0, sizeof(req));
+	req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+	req.nlh.nlmsg_type = RTM_GETADDR;
+	req.nlh.nlmsg_flags = NLM_F_ROOT|NLM_F_REQUEST;
+	req.nlh.nlmsg_pid = 0;
+	req.nlh.nlmsg_seq = CR_NLMSG_SEQ;
+
+	req.r.ifa_family = AF_INET6;
+
+	ret = do_rtnl_req(nlsk, &req, sizeof(req), collect_v6_addresses_cb, NULL, NULL);
+	close(nlsk);
+	if (ret < 0)
+		pr_err("collecting v6 addrs failed (%d)\n", ret);
+
+	return ret;
+}
+
+static int attach_v6_addresses(NetDeviceEntry *nde)
+{
+	int i;
+
+	for (i = 0; i < n_v6_addresses; i++) {
+		V6Address *cur = &v6_addresses[i];
+		void *m;
+
+		if (cur->ifindex != nde->ifindex)
+			continue;
+
+		m = realloc(nde->v6addrs, sizeof(*nde->v6addrs) * (nde->n_v6addrs + 1));
+		if (!m)
+			return -1;
+
+		nde->v6addrs = m;
+		nde->v6addrs[nde->n_v6addrs++] = cur;
+	}
+
+	return 0;
+}
+
 static int dump_one_netdev(int type, struct ifinfomsg *ifi,
 		struct rtattr **tb, struct cr_imgset *fds,
 		int (*dump)(NetDeviceEntry *, struct cr_imgset *))
@@ -173,6 +270,11 @@ static int dump_one_netdev(int type, struct ifinfomsg *ifi,
 		pr_info("Found ll addr (%02x:../%d) for %s\n",
 				(int)netdev.address.data[0],
 				(int)netdev.address.len, netdev.name);
+	}
+
+	if (attach_v6_addresses(&netdev) < 0) {
+		pr_err("attaching v6 addresses failed\n");
+		return -1;
 	}
 
 	netdev.n_conf = ARRAY_SIZE(devconfs);
@@ -360,6 +462,11 @@ static int dump_links(struct cr_imgset *fds)
 		goto out;
 	}
 
+	if (collect_v6_addresses(sk) < 0) {
+		pr_err("getting v6 addresses failed\n");
+		return -1;
+	}
+
 	memset(&req, 0, sizeof(req));
 	req.nlh.nlmsg_len = sizeof(req);
 	req.nlh.nlmsg_type = RTM_GETLINK;
@@ -439,11 +546,70 @@ int restore_link_parms(NetDeviceEntry *nde, int nlsk)
 	return do_rtm_link_req(RTM_SETLINK, nde, nlsk, NULL);
 }
 
+static int restore_addr_cb(struct nlmsghdr *hdr, void *arg)
+{
+	pr_info("Got response on NEWADDR =)\n");
+	return 0;
+}
+
+static int restore_v6_addr(int nlsk, V6Address *addr)
+{
+	struct {
+		struct nlmsghdr nlh;
+		struct ifaddrmsg r;
+		char buf[1024];
+	} req;
+
+	memset(&req, 0, sizeof(req));
+	req.nlh.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifaddrmsg));
+	req.nlh.nlmsg_type = RTM_NEWADDR;
+	req.nlh.nlmsg_flags = NLM_F_REQUEST|NLM_F_ACK|NLM_F_CREATE;
+	req.nlh.nlmsg_pid = 0;
+	req.nlh.nlmsg_seq = CR_NLMSG_SEQ;
+
+	req.r.ifa_family = AF_INET6;
+	req.r.ifa_scope = addr->scope;
+	req.r.ifa_index = addr->ifindex;
+	req.r.ifa_prefixlen = addr->prefixlen;
+
+	/* We disable DAD here because otherwise we'd have to wait for
+	 * IFA_F_TENTATIVE to clear before we can bind() to the address, which
+	 * slows down the restore process to an unknown amount of time (based
+	 * on the whims of the kernel).
+	 */
+	req.r.ifa_flags = IFA_F_NODAD;
+
+	if (addr->n_addr != PB_ALEN_INET6) {
+		pr_err("bad addr len %lu\n", addr->n_addr);
+		return -1;
+	}
+
+	addattr_l(&req.nlh, sizeof(req), IFA_ADDRESS, addr->addr, IPV6_ADDRLEN);
+
+	return do_rtnl_req(nlsk, &req, req.nlh.nlmsg_len, restore_addr_cb, NULL, NULL);
+}
+
 static int restore_one_link(NetDeviceEntry *nde, int nlsk,
 		int (*link_info)(NetDeviceEntry *, struct newlink_req *))
 {
+	int i;
+
 	pr_info("Restoring netdev %s idx %d\n", nde->name, nde->ifindex);
-	return do_rtm_link_req(RTM_NEWLINK, nde, nlsk, link_info);
+
+	if (do_rtm_link_req(RTM_NEWLINK, nde, nlsk, link_info) < 0)
+		return -1;
+
+	/* now, restore any ipv6 addrs it had */
+	for (i = 0; i < nde->n_v6addrs; i++) {
+		pr_info("restoring v6 addr for %s\n", nde->name);
+
+		if (restore_v6_addr(nlsk, nde->v6addrs[i]) < 0) {
+			pr_err("failed to restore v6 addr for %s\n", nde->name);
+			return -1;
+		}
+	}
+
+	return 0;
 }
 
 #ifndef VETH_INFO_MAX
@@ -518,7 +684,7 @@ static int bridge_link_info(NetDeviceEntry *nde, struct newlink_req *req)
 
 static int restore_link(NetDeviceEntry *nde, int nlsk)
 {
-	pr_info("Restoring link %s type %d\n", nde->name, nde->type);
+	pr_info("Restoring link %s type %d (idx %d)\n", nde->name, nde->type, nde->ifindex);
 
 	switch (nde->type) {
 	case ND_TYPE__LOOPBACK: /* fallthrough */

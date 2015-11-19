@@ -19,10 +19,8 @@
 #include "log.h"
 #include "util.h"
 #include "sockets.h"
+#include "net.h"
 #include "sk-inet.h"
-
-#define PB_ALEN_INET	1
-#define PB_ALEN_INET6	4
 
 static LIST_HEAD(inet_ports);
 
