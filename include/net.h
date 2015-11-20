@@ -33,4 +33,6 @@ extern int move_veth_to_bridge(void);
 #define PB_ALEN_INET	1
 #define PB_ALEN_INET6	4
 
+extern int find_ifindex(void *v6addr, u32 *ifindex);
+
 #endif /* __CR_NET_H__ */

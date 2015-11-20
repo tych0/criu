@@ -296,6 +296,13 @@ static int do_dump_one_inet_fd(int lfd, u32 id, const struct fd_parms *p, int fa
 
 		ie.v6only = val ? true : false;
 		ie.has_v6only = true;
+
+		/* ifindex only matters on source ports for bind, so let's
+		 * find only that ifindex. */
+		if (find_ifindex(sk->src_addr, &ie.ifindex) < 0)
+			pr_warn("ifindex for %d not found, can't bind\n", ie.id);
+		else
+			ie.has_ifindex = true;
 	}
 
 	ie.src_addr = xmalloc(pb_repeated_size(&ie, src_addr));
@@ -605,7 +612,7 @@ union sockaddr_inet {
 };
 
 static int restore_sockaddr(union sockaddr_inet *sa,
-		int family, u32 pb_port, u32 *pb_addr)
+		int family, u32 pb_port, u32 *pb_addr, u32 ifindex)
 {
 	BUILD_BUG_ON(sizeof(sa->v4.sin_addr.s_addr) > PB_ALEN_INET * sizeof(u32));
 	BUILD_BUG_ON(sizeof(sa->v6.sin6_addr.s6_addr) > PB_ALEN_INET6 * sizeof(u32));
@@ -623,6 +630,12 @@ static int restore_sockaddr(union sockaddr_inet *sa,
 		sa->v6.sin6_family = AF_INET6;
 		sa->v6.sin6_port = htons(pb_port);
 		memcpy(sa->v6.sin6_addr.s6_addr, pb_addr, sizeof(sa->v6.sin6_addr.s6_addr));
+
+		/* Here although the struct member is called scope_id, the
+		 * kernel really wants ifindex. See
+		 * /net/ipv6/af_inet6.c:inet6_bind for details.
+		 */
+		sa->v6.sin6_scope_id = ifindex;
 		return sizeof(sa->v6);
 	}
 
@@ -637,7 +650,7 @@ int inet_bind(int sk, struct inet_sk_info *ii)
 	int addr_size;
 
 	addr_size = restore_sockaddr(&addr, ii->ie->family,
-			ii->ie->src_port, ii->ie->src_addr);
+			ii->ie->src_port, ii->ie->src_addr, ii->ie->ifindex);
 
 	/*
 	 * ipv6 addresses go through a “tentative” phase and
@@ -661,7 +674,7 @@ int inet_bind(int sk, struct inet_sk_info *ii)
 	}
 
 	if (bind(sk, (struct sockaddr *)&addr, addr_size) == -1) {
-		pr_perror("Can't bind inet socket");
+		pr_perror("Can't bind inet socket (id %d)", ii->ie->id);
 		return -1;
 	}
 
@@ -685,7 +698,7 @@ int inet_connect(int sk, struct inet_sk_info *ii)
 	int addr_size;
 
 	addr_size = restore_sockaddr(&addr, ii->ie->family,
-			ii->ie->dst_port, ii->ie->dst_addr);
+			ii->ie->dst_port, ii->ie->dst_addr, ii->ie->ifindex);
 
 	if (connect(sk, (struct sockaddr *)&addr, addr_size) == -1) {
 		pr_perror("Can't connect inet socket back");

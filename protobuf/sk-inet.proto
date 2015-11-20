@@ -33,4 +33,5 @@ message inet_sk_entry {
 	required sk_opts_entry		opts		= 14;
 	optional bool			v6only		= 15;
 	optional ip_opts_entry		ip_opts		= 16;
+	optional uint32			ifindex		= 17;
 }

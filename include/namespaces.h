@@ -42,6 +42,7 @@ struct ns_id {
 
 		struct {
 			int nlsk;	/* for sockets collection */
+			int rtsk;	/* for v6 address collection */
 			int seqsk;	/* to talk to parasite daemons */
 		} net;
 	};

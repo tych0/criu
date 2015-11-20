@@ -245,6 +245,23 @@ static int attach_v6_addresses(NetDeviceEntry *nde)
 	return 0;
 }
 
+int find_ifindex(void *v6addr, u32 *ifindex)
+{
+	int i;
+
+	for (i = 0; i < n_v6_addresses; i++) {
+		V6Address *cur = &v6_addresses[i];
+
+		if (memcmp(cur->addr, v6addr, IPV6_ADDRLEN))
+			continue;
+
+		*ifindex = cur->ifindex;
+		return 0;
+	}
+
+	return -1;
+}
+
 static int dump_one_netdev(int type, struct ifinfomsg *ifi,
 		struct rtattr **tb, struct cr_imgset *fds,
 		int (*dump)(NetDeviceEntry *, struct cr_imgset *))
@@ -460,11 +477,6 @@ static int dump_links(struct cr_imgset *fds)
 	if (sk < 0) {
 		pr_perror("Can't open rtnl sock for net dump");
 		goto out;
-	}
-
-	if (collect_v6_addresses(sk) < 0) {
-		pr_err("getting v6 addresses failed\n");
-		return -1;
 	}
 
 	memset(&req, 0, sizeof(req));
@@ -1297,6 +1309,13 @@ static int prep_ns_sockets(struct ns_id *ns, bool for_dump)
 	} else
 		ns->net.nlsk = -1;
 
+	ret = ns->net.rtsk = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	if (ret < 0) {
+		pr_perror("can't open rtnl socket for v6 addr dump");
+		goto err_sq;
+	}
+
+
 	ret = ns->net.seqsk = socket(PF_UNIX, SOCK_SEQPACKET, 0);
 	if (ret < 0) {
 		pr_perror("Can't create seqsk for parasite");
@@ -1329,6 +1348,19 @@ static int collect_net_ns(struct ns_id *ns, void *oarg)
 
 	pr_info("Collecting netns %d/%d\n", ns->id, ns->ns_pid);
 	ret = prep_ns_sockets(ns, for_dump);
+	if (ret)
+		return ret;
+
+	/* We need to collect the v6 addresses before we collect the sockets,
+	 * because we need to find the ifindex for an address (so that we can
+	 * bind() successfully on restore if something has bound to a v6
+	 * address). Unfortunately, the inet_diag module doesn't export the
+	 * ifindex of a connection, so we query all the addresses via netlink
+	 * and keep track of their ifindicies so we can find them later. (This
+	 * is no extra work, since we need all this information for
+	 * attach_v6_addresses anyways; we just have to do it earlier.)
+	 */
+	ret = collect_v6_addresses(ns->net.rtsk);
 	if (ret)
 		return ret;
 
