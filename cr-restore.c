@@ -130,6 +130,11 @@ static int crtools_prepare_shared(void)
 	if (collect_remaps_and_regfiles())
 		return -1;
 
+	/* dead pid remap needs to allocate task helpers which all tasks need
+	 * to see */
+	if (prepare_remaps())
+		return -1;
+
 	/* Connections are unlocked from criu */
 	if (collect_inet_sockets())
 		return -1;
@@ -186,9 +191,6 @@ static int root_prepare_shared(void)
 		return -1;
 
 	if (prepare_shared_reg_files())
-		return -1;
-
-	if (prepare_remaps())
 		return -1;
 
 	for (i = 0; i < ARRAY_SIZE(cinfos); i++) {
