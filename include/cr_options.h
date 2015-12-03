@@ -5,6 +5,8 @@
 
 #include "list.h"
 
+#include "protobuf/inventory.pb-c.h"
+
 /*
  * CPU capability options.
  */
@@ -95,6 +97,9 @@ struct cr_options {
 	bool			overlayfs;
 	size_t			ghost_limit;
 	struct list_head	irmap_scan_paths;
+	bool			lsm_supplied;
+	Lsmtype			force_lsm;
+	char			*lsm_profile;
 };
 
 extern struct cr_options opts;
