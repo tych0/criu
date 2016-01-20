@@ -820,6 +820,16 @@ static int check_clone_parent_vs_pid()
 	return 0;
 }
 
+static int check_cgroupns(void)
+{
+	if (opts.check_ms_kernel) {
+		pr_warn("Skipping cgroup namespaces check\n");
+		return 0;
+	}
+
+	return access("/proc/self/ns/cgroup", F_OK);
+}
+
 static int (*chk_feature)(void);
 
 int cr_check(void)
@@ -876,6 +886,7 @@ int cr_check(void)
 	ret |= check_aio_remap();
 	ret |= check_fdinfo_lock();
 	ret |= check_clone_parent_vs_pid();
+	ret |= check_cgroupns();
 
 out:
 	if (!ret)
@@ -949,6 +960,8 @@ int check_add_feature(char *feat)
 		chk_feature = check_ptrace_dump_seccomp_filters;
 	else if (!strcmp(feat, "loginuid"))
 		chk_feature = check_loginuid;
+	else if (!strcmp(feat, "cgroupns"))
+		chk_feature = check_cgroupns;
 	else {
 		pr_err("Unknown feature %s\n", feat);
 		return -1;
