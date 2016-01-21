@@ -18,6 +18,7 @@
 #include "util-pie.h"
 #include "namespaces.h"
 #include "seize.h"
+#include "syscall-types.h"
 #include "protobuf.h"
 #include "protobuf/core.pb-c.h"
 #include "protobuf/cgroup.pb-c.h"
@@ -146,6 +147,11 @@ static bool cg_set_compare(struct cg_set *set, struct list_head *ctls, int what)
 			return !c1 && !c2; /* Both lists scanned -- match */
 
 		if (strcmp(c1->name, c2->name))
+			return false;
+
+		/* must have the same cgns prefix to be considered equal */
+		if (((long)c1->cgns_prefix ^ (long)c2->cgns_prefix) ||
+		    (c1->cgns_prefix && strcmp(c1->cgns_prefix, c2->cgns_prefix)))
 			return false;
 
 		switch (what) {
@@ -662,18 +668,25 @@ static int collect_cgroups(struct list_head *ctls)
 
 int dump_task_cgroup(struct pstree_item *item, u32 *cg_id)
 {
-	int pid;
+	int pid, virt_pid;
 	LIST_HEAD(ctls);
 	unsigned int n_ctls = 0;
 	struct cg_set *cs;
 
-	if (item)
+	if (item) {
 		pid = item->pid.real;
-	else
+
+		/* we only need to resolve the virtual pid's cgroups if we
+		 * actually have cgns enabled.
+		 */
+		virt_pid = item->ids->has_cgroup_ns_id ? item->pid.virt : -1;
+	} else {
 		pid = getpid();
+		virt_pid = -1;
+	}
 
 	pr_info("Dumping cgroups for %d\n", pid);
-	if (parse_task_cgroup(pid, &ctls, &n_ctls))
+	if (parse_task_cgroup(pid, virt_pid, &ctls, &n_ctls))
 		return -1;
 
 	cs = get_cg_set(&ctls, n_ctls);
@@ -891,6 +904,7 @@ static int dump_sets(CgroupEntry *cg)
 			cg_member_entry__init(ce);
 			ce->name = ctl->name;
 			ce->path = ctl->path;
+			ce->cgns_prefix = ctl->cgns_prefix;
 			se->ctls[c++] = ce++;
 		}
 
@@ -997,13 +1011,13 @@ static int userns_move(void *arg, int fd, pid_t pid)
 	return 0;
 }
 
-static int move_in_cgroup(CgSetEntry *se)
+static int move_in_cgroup(CgSetEntry *se, bool do_cgns_set)
 {
 	int i;
 
 	pr_info("Move into %d\n", se->id);
 	for (i = 0; i < se->n_ctls; i++) {
-		char aux[PATH_MAX];
+		char aux[PATH_MAX], *path;
 		int fd = -1, err, j, aux_off;
 		CgMemberEntry *ce = se->ctls[i];
 		CgControllerEntry *ctrl = NULL;
@@ -1023,7 +1037,28 @@ static int move_in_cgroup(CgSetEntry *se)
 
 		aux_off = ctrl_dir_and_opt(ctrl, aux, sizeof(aux), NULL, 0);
 
-		snprintf(aux + aux_off, sizeof(aux) - aux_off, "/%s/tasks", ce->path);
+		if (do_cgns_set && ce->cgns_prefix) {
+			snprintf(aux + aux_off, sizeof(aux) - aux_off, "/%s/tasks", ce->cgns_prefix);
+			if (userns_call(userns_move, UNS_ASYNC, aux, strlen(aux) + 1, -1) < 0) {
+				pr_perror("couldn't set cgns prefix %s", aux);
+				return -1;
+			}
+
+			if (unshare(CLONE_NEWCGROUP) < 0) {
+				pr_perror("couldn't unshare cgns");
+				return -1;
+			}
+		}
+
+		/* Since above we entered the cgns prefix, if we're not going to
+		 * restore via usernsd, we need to adjust the path here because
+		 * we're now in the cgns prefix path instead of /.
+		 */
+		path = ce->path;
+		if (ce->cgns_prefix && !(root_ns_mask & CLONE_NEWUSER))
+			path += strlen(ce->cgns_prefix);
+
+		snprintf(aux + aux_off, sizeof(aux) - aux_off, "/%s/tasks", path);
 		pr_debug("  `-> %s\n", aux);
 		err = userns_call(userns_move, UNS_ASYNC, aux, strlen(aux) + 1, -1);
 		if (err < 0) {
@@ -1039,6 +1074,7 @@ int prepare_task_cgroup(struct pstree_item *me)
 {
 	CgSetEntry *se;
 	u32 current_cgset;
+	bool same_cgns_as_parent = false;
 
 	if (!rsti(me)->cg_set)
 		return 0;
@@ -1059,7 +1095,7 @@ int prepare_task_cgroup(struct pstree_item *me)
 		return -1;
 	}
 
-	return move_in_cgroup(se);
+	return move_in_cgroup(se, !same_cgns_as_parent);
 }
 
 void fini_cgroup(void)
@@ -1569,3 +1605,5 @@ int new_cg_root_add(char *controller, char *newroot)
 	list_add(&o->node, &opts.new_cgroup_roots);
 	return 0;
 }
+
+struct ns_desc cgroup_ns_desc = NS_DESC_ENTRY(CLONE_NEWCGROUP, "cgroup");
