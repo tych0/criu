@@ -2158,13 +2158,8 @@ int parse_threads(int pid, struct pid **_t, int *_n)
 	return 0;
 }
 
-int parse_task_cgroup(int pid, struct list_head *retl, unsigned int *n)
+int parse_cgroup_file(FILE *f, struct list_head *retl, unsigned int *n)
 {
-	FILE *f;
-
-	f = fopen_proc(pid, "cgroup");
-	if (f == NULL)
-		return -1;
 	while (fgets(buf, BUF_SIZE, f)) {
 		struct cg_ctl *ncc, *cc;
 		char *name, *path = NULL, *e;
@@ -2195,6 +2190,7 @@ int parse_task_cgroup(int pid, struct list_head *retl, unsigned int *n)
 
 		ncc->name = xstrdup(name);
 		ncc->path = xstrdup(path);
+		ncc->cgns_prefix = NULL;
 		if (!ncc->name || !ncc->path) {
 			xfree(ncc->name);
 			xfree(ncc->path);
@@ -2210,13 +2206,88 @@ int parse_task_cgroup(int pid, struct list_head *retl, unsigned int *n)
 		(*n)++;
 	}
 
-	fclose(f);
 	return 0;
 
 err:
 	put_ctls(retl);
-	fclose(f);
 	return -1;
+}
+
+int parse_task_cgroup(int pid, struct parasite_dump_cgroup_args *args, struct list_head *retl, unsigned int *n)
+{
+	FILE *f;
+	int ret;
+	LIST_HEAD(internal);
+	unsigned int n_internal;
+	struct cg_ctl *intern, *ext;
+
+	f = fopen_proc(pid, "cgroup");
+	if (!f) {
+		pr_perror("couldn't open task cgroup file");
+		return -1;
+	}
+
+	ret = parse_cgroup_file(f, retl, n);
+	fclose(f);
+	if (ret < 0)
+		return -1;
+
+	/* No parasite args, we're dumping criu's cg set, so we don't need to
+	 * try and parse the "internal" cgroup set to find namespace
+	 * boundaries.
+	 */
+	if (!args)
+		return 0;
+
+	f = fmemopen(args->contents, strlen(args->contents), "r");
+	if (!f) {
+		pr_perror("couldn't fmemopen cgroup buffer:\n%s\n", args->contents);
+		return -1;
+	}
+
+	ret = parse_cgroup_file(f, &internal, &n_internal);
+	fclose(f);
+	if (ret < 0) {
+		pr_err("couldn't parse internal cgroup file\n");
+		return -1;
+	}
+
+	list_for_each_entry(intern, &internal, l) {
+		list_for_each_entry(ext, retl, l) {
+			char *pos, tmp;
+
+			if (strcmp(ext->name, intern->name))
+				continue;
+
+			/* If the cgroup namespace was unshared at / (or there
+			 * is no cgroup namespace relative to criu), the paths
+			 * are equal and we don't need to set a prefix.
+			 */
+			if (!strcmp(ext->path, intern->path))
+				continue;
+
+			/* +1 here to chop off the leading / */
+			pos = ext->path + strlen(ext->path) - strlen(intern->path+1);
+			if (strcmp(pos, intern->path+1)) {
+				pr_err("invalid cgroup configuration, %s is not a suffix of %s\n", intern->path, ext->path);
+				ret = -1;
+				goto out;
+			}
+
+			tmp = *pos;
+			*pos = '\0';
+			ext->cgns_prefix = xstrdup(ext->path);
+			if (!ext->cgns_prefix) {
+				ret = -1;
+				goto out;
+			}
+			*pos = tmp;
+		}
+	}
+
+out:
+	put_ctls(&internal);
+	return ret;
 }
 
 void put_ctls(struct list_head *l)
@@ -2224,6 +2295,8 @@ void put_ctls(struct list_head *l)
 	struct cg_ctl *c, *n;
 
 	list_for_each_entry_safe(c, n, l, l) {
+		if (c->cgns_prefix)
+			xfree(c->cgns_prefix);
 		xfree(c->name);
 		xfree(c->path);
 		xfree(c);

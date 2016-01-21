@@ -18,6 +18,7 @@
 #include "pstree.h"
 #include "namespaces.h"
 #include "net.h"
+#include "cgroup.h"
 
 #include "protobuf.h"
 #include "images/ns.pb-c.h"
@@ -30,6 +31,7 @@ static struct ns_desc *ns_desc_array[] = {
 	&pid_ns_desc,
 	&user_ns_desc,
 	&mnt_ns_desc,
+	&cgroup_ns_desc,
 };
 
 static unsigned int parse_ns_link(char *link, size_t len, struct ns_desc *d)
@@ -373,6 +375,10 @@ static int open_ns_fd(struct file_desc *d)
 			item = t;
 			nd = &mnt_ns_desc;
 			break;
+		} else if (ids->cgroup_ns_id == nfi->nfe->ns_id) {
+			item = t;
+			nd = &cgroup_ns_desc;
+			break;
 		}
 	}
 
@@ -485,6 +491,13 @@ int dump_task_ns_ids(struct pstree_item *item)
 	ids->user_ns_id = get_ns_id(pid, &user_ns_desc);
 	if (!ids->user_ns_id) {
 		pr_err("Can't make userns id\n");
+		return -1;
+	}
+
+	ids->has_cgroup_ns_id = true;
+	ids->cgroup_ns_id = get_ns_id(pid, &cgroup_ns_desc);
+	if (!ids->cgroup_ns_id) {
+		pr_err("Can't make cgroup id\n");
 		return -1;
 	}
 
@@ -733,6 +746,11 @@ static int do_dump_namespaces(struct ns_id *ns)
 		pr_info("Dump NET namespace info %d via %d\n",
 				ns->id, ns->ns_pid);
 		ret = dump_net_ns(ns->id);
+		break;
+	case CLONE_NEWCGROUP:
+		pr_info("Dump CGROUP namespace info %d via %d\n",
+				ns->id, ns->ns_pid);
+		/* handled separately in cgroup dumping code */
 		break;
 	default:
 		pr_err("Unknown namespace flag %x\n", ns->nd->cflag);
