@@ -1229,7 +1229,7 @@ static int dump_one_task(struct pstree_item *item)
 		BUG();
 	}
 
-	if (root_ns_mask & CLONE_NEWPID && root_item == item) {
+	if (root_item == item) {
 		int pfd;
 
 		pfd = parasite_get_proc_fd_seized(parasite_ctl);
