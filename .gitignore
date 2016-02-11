@@ -33,5 +33,6 @@ crtools/include/config.h
 crtools/protobuf-desc-gen.h
 lib/c/criu.pc
 build
+local
 .gitid
 usr/
