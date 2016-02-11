@@ -93,6 +93,21 @@ static int prepare_mntns(void)
 		return -1;
 	}
 
+	if (mkdir("/dev", 0777) && errno != EEXIST) {
+		fprintf(stderr, "mkdir(/dev) failed: %m\n");
+		return -1;
+	}
+
+	if (mount("devtmpfs", "/dev", "devtmpfs", 0, NULL)) {
+		fprintf(stderr, "mount(/dev) failed: %m\n");
+		return -1;
+	}
+
+	if (mkdir("/dev/pts", 0777) && errno != EEXIST) {
+		fprintf(stderr, "mkdir(/dev) failed: %m\n");
+		return -1;
+	}
+
 	if (mount("pts", "/dev/pts", "devpts", MS_MGC_VAL, "mode=666,ptmxmode=666,newinstance")) {
 		fprintf(stderr, "mount(/dev/pts) failed: %m\n");
 		return -1;
