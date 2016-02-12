@@ -169,7 +169,7 @@ static int dump_one_netdev(int type, struct ifinfomsg *ifi,
 	netdev.flags = ifi->ifi_flags;
 	netdev.name = RTA_DATA(tb[IFLA_IFNAME]);
 
-	if (tb[IFLA_ADDRESS] && (type != ND_TYPE__LOOPBACK)) {
+	if (tb[IFLA_ADDRESS] && (type != ND_TYPE__LOOPBACK) && (type != ND_TYPE__SIT)) {
 		netdev.has_address = true;
 		netdev.address.data = RTA_DATA(tb[IFLA_ADDRESS]);
 		netdev.address.len = RTA_PAYLOAD(tb[IFLA_ADDRESS]);
@@ -303,6 +303,15 @@ static int dump_one_voiddev(struct ifinfomsg *ifi, char *kind,
 	return dump_unknown_device(ifi, kind, tb, fds);
 }
 
+static int dump_one_sit(struct ifinfomsg *ifi, char *kind,
+		struct rtattr **tb, struct cr_imgset *fds)
+{
+	if (!strcmp(kind, "sit"))
+		return dump_one_netdev(ND_TYPE__SIT, ifi, tb, fds, NULL);
+
+	return dump_unknown_device(ifi, kind, tb, fds);
+}
+
 static int dump_one_link(struct nlmsghdr *hdr, void *arg)
 {
 	struct cr_imgset *fds = arg;
@@ -337,6 +346,9 @@ static int dump_one_link(struct nlmsghdr *hdr, void *arg)
 		break;
 	case ARPHRD_VOID:
 		ret = dump_one_voiddev(ifi, kind, tb, fds);
+		break;
+	case ARPHRD_SIT:
+		ret = dump_one_sit(ifi, kind, tb, fds);
 		break;
 	default:
 unk:
@@ -688,6 +700,17 @@ static int bridge_link_info(NetDeviceEntry *nde, struct newlink_req *req)
 	return 0;
 }
 
+static int sit_link_info(NetDeviceEntry *nde, struct newlink_req *req)
+{
+	struct rtattr *sit_data;
+
+	sit_data = NLMSG_TAIL(&req->h);
+	addattr_l(&req->h, sizeof(*req), IFLA_INFO_KIND, "sit", sizeof("sit"));
+	sit_data->rta_len = (void *)NLMSG_TAIL(&req->h) - (void *)sit_data;
+
+	return 0;
+}
+
 static int restore_link(NetDeviceEntry *nde, int nlsk)
 {
 	pr_info("Restoring link %s type %d\n", nde->name, nde->type);
@@ -704,6 +727,8 @@ static int restore_link(NetDeviceEntry *nde, int nlsk)
 		return restore_one_tun(nde, nlsk);
 	case ND_TYPE__BRIDGE:
 		return restore_one_link(nde, nlsk, bridge_link_info);
+	case ND_TYPE__SIT:
+		return restore_one_link(nde, nlsk, sit_link_info);
 
 	default:
 		pr_err("Unsupported link type %d\n", nde->type);
