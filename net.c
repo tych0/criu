@@ -303,6 +303,15 @@ static int dump_one_voiddev(struct ifinfomsg *ifi, char *kind,
 	return dump_unknown_device(ifi, kind, tb, fds);
 }
 
+static int dump_one_sit(struct ifinfomsg *ifi, char *kind,
+		struct rtattr **tb, struct cr_imgset *fds)
+{
+	if (!strcmp(kind, "sit"))
+		return dump_one_netdev(ND_TYPE__SIT, ifi, tb, fds, NULL);
+
+	return dump_unknown_device(ifi, kind, tb, fds);
+}
+
 static int dump_one_link(struct nlmsghdr *hdr, void *arg)
 {
 	struct cr_imgset *fds = arg;
@@ -337,6 +346,9 @@ static int dump_one_link(struct nlmsghdr *hdr, void *arg)
 		break;
 	case ARPHRD_VOID:
 		ret = dump_one_voiddev(ifi, kind, tb, fds);
+		break;
+	case ARPHRD_SIT:
+		ret = dump_one_sit(ifi, kind, tb, fds);
 		break;
 	default:
 unk:
@@ -702,6 +714,8 @@ static int restore_link(NetDeviceEntry *nde, int nlsk)
 		return restore_one_tun(nde, nlsk);
 	case ND_TYPE__BRIDGE:
 		return restore_one_link(nde, nlsk, bridge_link_info);
+	case ND_TYPE__SIT:
+		return restore_one_link(nde, nlsk, NULL);
 
 	default:
 		pr_err("Unsupported link type %d\n", nde->type);
