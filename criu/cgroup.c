@@ -520,7 +520,7 @@ static int add_cgroup(const char *fpath, const struct stat *sb, int typeflag)
 		mtype = find_dir(ncd->path, &current_controller->heads, &match);
 
 		switch (mtype) {
-		/* ignore co-mounted cgroups */
+		/* ignore co-mounted cgroups and already dumped cgroups */
 		case EXACT_MATCH:
 			exit_code = 0;
 			goto out;
@@ -700,6 +700,10 @@ int dump_task_cgroup(struct pstree_item *item, u32 *cg_id, struct parasite_dump_
 		 * the get_cg_set routine.
 		 */
 		if (cs != criu_cgset && collect_cgroups(&cs->ctls))
+			return -1;
+	} else {
+		pr_info("Set %d is a stray\n", cs->id);
+		if (collect_cgroups(&cs->ctls))
 			return -1;
 	}
 
@@ -915,18 +919,10 @@ int dump_cgroups(void)
 
 	/*
 	 * Check whether root task lives in its own set as compared
-	 * to criu. If yes, we should not dump anything, but make
-	 * sure no other sets exist. The latter case can be supported,
-	 * but requires some trickery and is hardly needed at the
-	 * moment.
+	 * to criu. If yes, we should not dump anything.
 	 */
 
-	if (root_cgset == criu_cgset) {
-		if (!list_is_singular(&cg_sets)) {
-			pr_err("Non supported sub-cgroups found\n");
-			return -1;
-		}
-
+	if (root_cgset == criu_cgset && list_is_singular(&cg_sets)) {
 		pr_info("All tasks in criu's cgroups. Nothing to dump.\n");
 		return 0;
 	}
