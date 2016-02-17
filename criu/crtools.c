@@ -272,6 +272,7 @@ int main(int argc, char *argv[], char *envp[])
 		{ "lsm-profile",		required_argument,	0, 1071 },
 		{ "timeout",			required_argument,	0, 1072 },
 		{ "external",			required_argument,	0, 1073	},
+		{ "no-seccomp",			no_argument,		0, 1074 },
 		{ },
 	};
 
@@ -543,6 +544,9 @@ int main(int argc, char *argv[], char *envp[])
 			if (add_external(optarg))
 				return 1;
 			break;
+		case 1074:
+			opts.no_seccomp = true;
+			break;
 		case 'V':
 			pr_msg("Version: %s\n", CRIU_VERSION);
 			if (strcmp(CRIU_GITID, "0"))
@@ -792,6 +796,10 @@ usage:
 "                            tty[rdev:dev]\n"
 "                            pipe[inode]\n"
 "                            socket[inode]\n"
+"  --no-seccomp          Disable the dumping of seccomp state; this is useful\n"
+"                        for c/r of tasks using seccomp running on old kernels\n"
+"                        which do not have support for dump and restore\n"
+"                        of seccomp state.\n"
 "\n"
 "* Logging:\n"
 "  -o|--log-file FILE    log file name\n"
