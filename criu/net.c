@@ -11,7 +11,10 @@
 #include <sched.h>
 #include <sys/mount.h>
 #include <net/if.h>
+#include <netinet/in.h>
 #include <linux/sockios.h>
+#include <linux/ip.h>
+#include <linux/if_tunnel.h>
 #include <libnl3/netlink/msg.h>
 
 #include "imgset.h"
@@ -146,14 +149,14 @@ static int ipv4_conf_op(char *tgt, int *conf, int n, int op, NetnsEntry **netns)
 	return 0;
 }
 
-int write_netdev_img(NetDeviceEntry *nde, struct cr_imgset *fds)
+int write_netdev_img(NetDeviceEntry *nde, struct cr_imgset *fds, struct nlattr **data)
 {
 	return pb_write_one(img_from_set(fds, CR_FD_NETDEV), nde, PB_NETDEV);
 }
 
 static int dump_one_netdev(int type, struct ifinfomsg *ifi,
 		struct rtattr **tb, struct cr_imgset *fds,
-		int (*dump)(NetDeviceEntry *, struct cr_imgset *))
+		int (*dump)(NetDeviceEntry *, struct cr_imgset *, struct nlattr **data))
 {
 	int ret;
 	NetDeviceEntry netdev = NET_DEVICE_ENTRY__INIT;
@@ -190,7 +193,7 @@ static int dump_one_netdev(int type, struct ifinfomsg *ifi,
 	if (!dump)
 		dump = write_netdev_img;
 
-	ret = dump(&netdev, fds);
+	ret = dump(&netdev, fds, RTA_DATA(tb[IFLA_INFO_DATA]));
 err_free:
 	xfree(netdev.conf);
 	return ret;
@@ -229,7 +232,7 @@ static int dump_unknown_device(struct ifinfomsg *ifi, char *kind,
 	return -1;
 }
 
-static int dump_bridge(NetDeviceEntry *nde, struct cr_imgset *imgset)
+static int dump_bridge(NetDeviceEntry *nde, struct cr_imgset *imgset, struct nlattr **data)
 {
 	char spath[IFNAMSIZ + 16]; /* len("class/net//brif") + 1 for null */
 	int ret, fd;
@@ -261,7 +264,7 @@ static int dump_bridge(NetDeviceEntry *nde, struct cr_imgset *imgset)
 		return -1;
 	}
 
-	return write_netdev_img(nde, imgset);
+	return write_netdev_img(nde, imgset, data);
 }
 
 static int dump_one_ethernet(struct ifinfomsg *ifi, char *kind,
@@ -303,11 +306,35 @@ static int dump_one_voiddev(struct ifinfomsg *ifi, char *kind,
 	return dump_unknown_device(ifi, kind, tb, fds);
 }
 
+static int dump_sit_link(NetDeviceEntry *nde, struct cr_imgset *fds, struct nlattr **data)
+{
+	SitLinkEntry sit = SIT_LINK_ENTRY__INIT;
+
+	if (data[IFLA_IPTUN_LINK]) {
+		sit.has_iptun_link = true;
+		sit.iptun_link = *(u32 *)RTA_DATA(data[IFLA_IPTUN_LINK]);
+	}
+
+	if (data[IFLA_IPTUN_LOCAL]) {
+		sit.has_iptun_local = true;
+		sit.iptun_local = *(u32 *)data[IFLA_IPTUN_LOCAL];
+	}
+
+	if (data[IFLA_IPTUN_REMOTE]) {
+		sit.has_iptun_remote = true;
+		sit.iptun_remote = *(u32 *)data[IFLA_IPTUN_REMOTE];
+	}
+
+	nde->sit = &sit;
+
+	return write_netdev_img(nde, fds, data);
+}
+
 static int dump_one_sit(struct ifinfomsg *ifi, char *kind,
 		struct rtattr **tb, struct cr_imgset *fds)
 {
 	if (!strcmp(kind, "sit"))
-		return dump_one_netdev(ND_TYPE__SIT, ifi, tb, fds, NULL);
+		return dump_one_netdev(ND_TYPE__SIT, ifi, tb, fds, dump_sit_link);
 
 	return dump_unknown_device(ifi, kind, tb, fds);
 }
@@ -702,11 +729,27 @@ static int bridge_link_info(NetDeviceEntry *nde, struct newlink_req *req)
 
 static int sit_link_info(NetDeviceEntry *nde, struct newlink_req *req)
 {
-	struct rtattr *sit_data;
+	struct rtattr *tunnel_data;
+	SitLinkEntry *sit = nde->sit;
 
-	sit_data = NLMSG_TAIL(&req->h);
+	if (!sit) {
+		pr_err("Corrupted SIT link entry %x\n", nde->ifindex);
+		return -1;
+	}
+
 	addattr_l(&req->h, sizeof(*req), IFLA_INFO_KIND, "sit", sizeof("sit"));
-	sit_data->rta_len = (void *)NLMSG_TAIL(&req->h) - (void *)sit_data;
+
+	tunnel_data = NLMSG_TAIL(&req->h);
+	addattr_l(&req->h, sizeof(*req), IFLA_INFO_DATA, NULL, 0);
+
+	if (sit->has_iptun_link)
+		addattr_l(&req->h, sizeof(*req), IFLA_IPTUN_LINK, &sit->iptun_link, sizeof(sit->iptun_link));
+	if (sit->has_iptun_local)
+		addattr_l(&req->h, sizeof(*req), IFLA_IPTUN_LOCAL, &sit->iptun_local, sizeof(sit->iptun_local));
+	if (sit->has_iptun_remote)
+		addattr_l(&req->h, sizeof(*req), IFLA_IPTUN_REMOTE, &sit->iptun_local, sizeof(sit->iptun_remote));
+
+	tunnel_data->rta_len = (void *)NLMSG_TAIL(&req->h) - (void *)tunnel_data;
 
 	return 0;
 }

@@ -1,5 +1,6 @@
 import "opts.proto";
 import "tun.proto";
+import "sit.proto";
 
 enum nd_type {
 	LOOPBACK	= 1;
@@ -33,6 +34,8 @@ message net_device_entry {
 	optional bytes address		= 7;
 
 	repeated int32 conf		= 8;
+
+	optional sit_link_entry sit	= 9;
 }
 
 message netns_entry {

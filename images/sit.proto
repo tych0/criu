@@ -1,0 +1,9 @@
+message sit_link_entry {
+	/* IFLA_* params for ipip6 tunnels */
+	optional uint32		iptun_link	= 1;
+	optional uint32		iptun_local	= 2;
+	optional uint32		iptun_remote	= 3;
+
+	/* this is really uint8 */
+	optional uint32		iptun_ttl	= 4;
+}
