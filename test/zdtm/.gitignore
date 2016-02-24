@@ -217,6 +217,7 @@
 /static/mntns_root_bind
 /static/mntns_root_bind02
 /static/mntns-deleted-dst
+/static/sit
 /static/socket-tcp-local
 /static/socket-tcp6-local
 /static/socket-tcpbuf6-local
