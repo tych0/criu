@@ -90,14 +90,12 @@ config: $(VERSION_HEADER)
 SYSCALL-LIB		:= $(ARCH_DIR)/syscalls.built-in.o
 $(SYSCALL-LIB): config
 	$(Q) $(MAKE) $(call build-as,Makefile.syscalls,$(ARCH_DIR)) all
-PHONY += $(SYSCALL-LIB)
 
 #
 # Architecture dependant part.
 ARCH-LIB		:= $(ARCH_DIR)/crtools.built-in.o
 $(ARCH-LIB): config $(SYSCALL-LIB)
 	$(Q) $(MAKE) $(call build-as,Makefile,$(ARCH_DIR)) $@
-PHONY += $(ARCH-LIB)
 
 #
 # piegen tool needed for PIE code.
@@ -120,7 +118,7 @@ pie/lib.a: $(ARCH-LIB) $(SYSCALL-LIB)
 # PIE code blobs themseves.
 pie: $(piegen-bin) pie/lib.a
 	$(Q) $(MAKE) $(build)=pie all
-PHONY += pie
+.PHONY: pie
 
 #
 # CRIU executable
@@ -137,7 +135,6 @@ built-in.o: pie
 criu: $(PROGRAM-BUILTINS)
 	$(call msg-link, $@)
 	$(Q) $(CC) $(CFLAGS) $^ $(LIBS) $(LDFLAGS) $(GMONLDOPT) -rdynamic -o $@
-PHONY += criu
 
 #
 # Cleanup everything.
@@ -154,6 +151,7 @@ clean:
 	$(Q) $(RM) $(VERSION_HEADER)
 	$(Q) $(RM) $(CONFIG_HEADER)
 	$(Q) $(RM) criu
+.PHONY: clean
 
 UAPI_HEADERS := include/criu-plugin.h include/criu-log.h
 
@@ -163,10 +161,10 @@ install: criu
 	$(Q) install -m 755 criu $(DESTDIR)$(SBINDIR)
 	$(Q) mkdir -p $(DESTDIR)$(INCLUDEDIR)
 	$(Q) install -m 644 $(UAPI_HEADERS) $(DESTDIR)$(INCLUDEDIR)
+.PHONY: install
 
 #
 # Final @all target.
-all: $(PHONY)
+all: criu
 	@true
-
-.PHONY: $(PHONY) clean install
+.PHONY: all
