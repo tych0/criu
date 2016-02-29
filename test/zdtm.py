@@ -988,6 +988,8 @@ class launcher:
 
 		self.__nr += 1
 		self.__show_progress()
+		if self.__opts['dry_run'] is True:
+			return
 
 		nd = ('nocr', 'norst', 'pre', 'iters', 'page_server', 'sibling', \
 				'fault', 'keep_img', 'report', 'snaps', 'sat', \
@@ -1371,6 +1373,7 @@ rp.add_argument("--freezecg", help = "Use freeze cgroup (path:state)")
 rp.add_argument("--user", help = "Run CRIU as regular user", action = 'store_true')
 
 rp.add_argument("--page-server", help = "Use page server dump", action = 'store_true')
+rp.add_argument("--dry-run", help="Don't run tests, just pretend to", action='store_true')
 rp.add_argument("-p", "--parallel", help = "Run test in parallel")
 
 rp.add_argument("-k", "--keep-img", help = "Whether or not to keep images after test",
