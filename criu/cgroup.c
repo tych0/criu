@@ -1501,35 +1501,69 @@ err:
 static int rewrite_cgsets(CgroupEntry *cge, char **controllers, int n_controllers,
 			  char *from, char *to)
 {
-	int i, j;
-	for (i = 0; i < cge->n_sets; i++) {
-		CgSetEntry *set = cge->sets[i];
-		for (j = 0; j < set->n_ctls; j++) {
-			CgMemberEntry *cg = set->ctls[j];
-			if (cgroup_contains(controllers, n_controllers, cg->name) &&
-					/* +1 to get rid of leading / */
-					strstartswith(cg->path + 1, from)) {
-
-				char *tmp = cg->path;
-
-				/* +1 to get rid of leading /, again */
-				cg->path = xsprintf("%s%s", to, cg->path +
-							strlen(from) + 1);
-				if (!cg->path)
-					return -1;
-				free(tmp);
-			}
-		}
-
-	}
-	return 0;
 }
 
 static int rewrite_cgroup_roots(CgroupEntry *cge)
 {
 	int i, j;
-	struct cg_root_opt *o;
-	char *newroot = NULL;
+
+
+	for (i = 0; i < cge->n_sets; i++) {
+		char *newroot = opts.new_global_cg_root;
+		CgSetEntry *set = cge->sets[i];
+
+		for (j = 0; j < set->n_ctls; j++) {
+			CgMemberEntry *cg = set->ctls[j];
+			char *old;
+			int newroot_len, oldroot_len;
+
+			list_for_each_entry(o, &opts.new_cgroup_roots, node) {
+				if (cgroup_contains(o->controller, 1, cg->name)) {
+					newroot = o->newroot;
+					break;
+				}
+			}
+
+			/* no rewriting to do */
+			if (!newroot)
+				continue;
+
+			newroot_len = strlen(newroot);
+			old = cg->path;
+			if (cg->has_cgns_prefix && cg->cgns_prefix) {
+				oldroot_len = get_oldroot_len(cge, cg->name, cg->path);
+				if (oldroot_len) {
+					pr_err("couldn't find oldroot for %s:%s\n", cg->name, cg->path);
+					return -1;
+				}
+
+				cg->path = xsprintf("%s/%s", newroot, cg->path + cg->cgns_prefix);
+				cg->cgns_prefix = newroot_len;
+
+			} else {
+				int old_prefix_len;
+
+				/* no cgns prefix, let's use the old rewriting strategy */
+				if (rewrite_dir_entries(cge, cg->name, newroot, cg->path, &old_prefix_len)< 0) {
+					pr_err("rewrite_dir_entries failed\n");
+					return -1;
+				}
+
+				if (old_prefix_len > 0)
+					cg->path = xsprintf("%s/%s", newroot, cg->path + old_prefix_len);
+			}
+
+			if (!cg->path)
+				return -1;
+
+			if (old != cg->path) {
+				pr_info("rewrote cgset for %s: %s -> %s\n", cg->name, old, cg->path);
+				xfree(old);
+			}
+		}
+
+	}
+	return 0;
 
 	for (i = 0; i < cge->n_controllers; i++) {
 		CgControllerEntry *ctrl = cge->controllers[i];
