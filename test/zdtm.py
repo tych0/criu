@@ -939,6 +939,8 @@ def do_run_test(tname, tdesc, flavs, opts):
 	for f in flavs:
 		print
 		print_sep("Run %s in %s" % (tname, f))
+		if "CR_CT_TEST_DRY_RUN" in os.environ:
+			continue
 		flav = flavors[f](opts)
 		t = tclass(tname, tdesc, flav, fcg)
 		cr_api = criu_cli(opts)
@@ -1016,9 +1018,12 @@ class launcher:
 			logf = None
 			log = None
 
+		env = dict(os.environ, CR_CT_TEST_INFO=arg)
+		if self.__opts['dry_run']:
+			env['CR_CT_TEST_DRY_RUN'] = "yes"
+
 		sub = subprocess.Popen(["./zdtm_ct", "zdtm.py"], \
-				env = dict(os.environ, CR_CT_TEST_INFO = arg ), \
-				stdout = log, stderr = subprocess.STDOUT)
+				env = env, stdout = log, stderr = subprocess.STDOUT)
 		self.__subs[sub.pid] = { 'sub': sub, 'log': logf }
 
 		if test_flag(desc, 'excl'):
@@ -1387,6 +1392,7 @@ rp.add_argument("--user", help = "Run CRIU as regular user", action = 'store_tru
 
 rp.add_argument("--page-server", help = "Use page server dump", action = 'store_true')
 rp.add_argument("-p", "--parallel", help = "Run test in parallel")
+rp.add_argument("--dry-run", help="Don't run tests, just pretend to", action='store_true')
 
 rp.add_argument("-k", "--keep-img", help = "Whether or not to keep images after test",
 		choices = [ 'always', 'never', 'failed' ], default = 'failed')
