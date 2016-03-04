@@ -1608,8 +1608,10 @@ static int rewrite_cgsets(CgroupEntry *cge, char **controllers, int n_controller
 					*from = xsprintf("%s%s", to, (*from) + cg->cgns_prefix - 2);
 				}
 
+pr_err("cgset for %s: %s (suffix %s)\n", controllers[0], tmp, cg->path + cg->cgns_prefix - 1);
 				cg->path = xsprintf("%s%s", to, cg->path +
 							cg->cgns_prefix - 1);
+pr_err("cgset for %s: rewritten to %s\n", controllers[0], cg->path);
 				cg->cgns_prefix = strlen(to);
 			} else {
 				/* otherwise, use the old rewriting strategy */
