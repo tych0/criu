@@ -1604,13 +1604,13 @@ static int rewrite_cgsets(CgroupEntry *cge, char **controllers, int n_controller
 				 */
 				if (!set_from) {
 					set_from = true;
-					/* -2 because cgns_prefix includes leading and trailing /'s */
-					*from = xsprintf("%s%s", to, (*from) + cg->cgns_prefix - 2);
+					/* -1 because cgns_prefix includes leading / */
+					*from = xsprintf("%s%s", to, (*from) + cg->cgns_prefix - 1);
 				}
 
-pr_err("cgset for %s: %s (suffix %s)\n", controllers[0], tmp, cg->path + cg->cgns_prefix - 1);
+pr_err("cgset for %s: %s (suffix %s)\n", controllers[0], tmp, cg->path + cg->cgns_prefix);
 				cg->path = xsprintf("%s%s", to, cg->path +
-							cg->cgns_prefix - 1);
+							cg->cgns_prefix);
 pr_err("cgset for %s: rewritten to %s\n", controllers[0], cg->path);
 				cg->cgns_prefix = strlen(to);
 			} else {
