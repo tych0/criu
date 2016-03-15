@@ -764,15 +764,18 @@ err:
 	return ret;
 }
 
-static int collect_child_pids(int state, int *n)
+static int collect_pids(int state, bool needs_all, int *n)
 {
 	struct pstree_item *pi;
 
 	*n = 0;
-	list_for_each_entry(pi, &current->children, sibling) {
+	for_each_pstree_item(pi) {
 		pid_t *child;
 
 		if (pi->state != state)
+			continue;
+
+		if (!needs_all && pi->parent != current)
 			continue;
 
 		child = rst_mem_alloc(sizeof(*child), RM_PRIVATE);
@@ -786,16 +789,16 @@ static int collect_child_pids(int state, int *n)
 	return 0;
 }
 
-static int collect_helper_pids()
+static int collect_helper_pids(void)
 {
 	helpers_pos = rst_mem_align_cpos(RM_PRIVATE);
-	return collect_child_pids(TASK_HELPER, &n_helpers);
+	return collect_pids(TASK_HELPER, !current->parent, &n_helpers);
 }
 
-static int collect_zombie_pids()
+static int collect_zombie_pids(void)
 {
 	zombies_pos = rst_mem_align_cpos(RM_PRIVATE);
-	return collect_child_pids(TASK_DEAD, &n_zombies);
+	return collect_pids(TASK_DEAD, !current->parent, &n_zombies);
 }
 
 static int open_cores(int pid, CoreEntry *leader_core)
