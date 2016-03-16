@@ -2350,12 +2350,12 @@ do_bind:
 		}
 	}
 
-	if (mount(root, mi->mountpoint, NULL, MS_BIND, NULL) < 0) {
+	mflags = mi->flags & (~MS_PROPAGATE | ~MS_REMOUNT);
+	if (mount(root, mi->mountpoint, NULL, MS_BIND | mflags, NULL) < 0) {
 		pr_perror("Can't mount at %s", mi->mountpoint);
 		goto err;
 	}
 
-	mflags = mi->flags & (~MS_PROPAGATE);
 	if (!mi->bind || mflags != (mi->bind->flags & (~MS_PROPAGATE)))
 		if (mount(NULL, mi->mountpoint, NULL, MS_BIND | MS_REMOUNT | mflags, NULL)) {
 			pr_perror("Can't mount at %s", mi->mountpoint);
