@@ -1822,7 +1822,7 @@ static struct fstype fstypes[] = {
 		.name = "autofs",
 		.code = FSTYPE__AUTOFS,
 		.parse = autofs_parse,
-		.dump = always_fail,
+		.dump = autofs_dump,
 		.restore = always_fail,
 	},
 };
