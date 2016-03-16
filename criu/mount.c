@@ -28,6 +28,7 @@
 #include "kerndat.h"
 #include "fs-magic.h"
 #include "sysfs_parse.h"
+#include "autofs.h"
 
 #include "images/mnt.pb-c.h"
 #include "images/binfmt-misc.pb-c.h"
@@ -1756,6 +1757,12 @@ static struct fstype fstypes[] = {
 		.name = "overlay",
 		.code = FSTYPE__OVERLAYFS,
 		.parse = overlayfs_parse,
+	}, {
+		.name = "autofs",
+		.code = FSTYPE__AUTOFS,
+		.parse = autofs_parse,
+		.dump = always_fail,
+		.restore = always_fail,
 	},
 };
 
