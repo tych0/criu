@@ -37,6 +37,8 @@
 /* Nested namespaces are supported only for these types */
 #define CLONE_SUBNS	(CLONE_NEWNS)
 
+#define UNSHARE_MOUNT_PROC	0x1
+
 struct ns_desc {
 	unsigned int	cflag;
 	char		*str;
