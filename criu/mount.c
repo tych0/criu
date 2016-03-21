@@ -319,6 +319,9 @@ static bool mounts_sb_equal(struct mount_info *a, struct mount_info *b)
 			return false;
 	}
 
+	if (a->fstype->code == FSTYPE__CGROUP && strcmp(a->root, b->root))
+		return false;
+
 	return a->s_dev == b->s_dev && !strcmp(a->source, b->source);
 }
 
