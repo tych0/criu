@@ -2866,6 +2866,26 @@ static int collect_mnt_from_image(struct mount_info **pms, struct ns_id *nsid)
 		/* FIXME: abort unsupported early */
 		pm->fstype = decode_fstype(me->fstype, me->fsname);
 
+		if (pm->fstype->code == FSTYPE__CGROUP) {
+			char *start;
+
+			start = strstr(pm->options, "nsroot=");
+			if (start) {
+				char *next = strchr(start, ',');
+
+				if (next) {
+					/* skip the `,' but include the terminating \0 */
+					memmove(start, next+1, strlen(next+1)+1);
+				} else {
+					if (start > pm->options && *(start-1) == ',')
+						start--;
+					*start = 0;
+				}
+
+				pr_info("trimmed nsroot option from cgroup mount, opts now: %s\n", pm->options);
+			}
+		}
+
 		if (get_mp_root(me, pm))
 			goto err;
 
