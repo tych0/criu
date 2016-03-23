@@ -1631,6 +1631,22 @@ out:
 	return ret;
 }
 
+static int cgroup_parse(struct mount_info *pm)
+{
+	if (!(root_ns_mask & CLONE_NEWCGROUP))
+		return 0;
+
+	/* cgroup namespaced mounts don't look rooted to CRIU, so let's fake it
+	 * here.
+	 */
+	xfree(pm->root);
+	pm->root = xstrdup("/");
+	if (!pm->root)
+		return -1;
+
+	return 0;
+}
+
 static int dump_empty_fs(struct mount_info *pm)
 {
 	int fd, ret = -1;
@@ -1716,6 +1732,7 @@ static struct fstype fstypes[32] = {
 	}, {
 		.name = "cgroup",
 		.code = FSTYPE__CGROUP,
+		.parse = cgroup_parse,
 	}, {
 		.name = "aufs",
 		.code = FSTYPE__AUFS,
