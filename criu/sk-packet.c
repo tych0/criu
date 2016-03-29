@@ -186,6 +186,7 @@ static int dump_one_packet_fd(int lfd, u32 id, const struct fd_parms *p)
 	if (sd->fanout != NO_FANOUT) {
 		psk.has_fanout = true;
 		psk.fanout = sd->fanout;
+		pr_info("fanout for %d is %d\n", psk.ifindex, psk.fanout);
 	}
 
 	ret = dump_rings(&psk, sd);
@@ -406,6 +407,7 @@ static int open_packet_sk(struct file_desc *d)
 	pse = psi->pse;
 
 	pr_info("Opening packet socket id %#x\n", pse->id);
+	pr_info("ifindex %d type %d protocol %d\n", pse->ifindex, pse->type, pse->protocol);
 
 	sk = socket(PF_PACKET, pse->type, pse->protocol);
 	if (sk < 0) {
@@ -418,7 +420,7 @@ static int open_packet_sk(struct file_desc *d)
 	addr.sll_ifindex = pse->ifindex;
 
 	if (bind(sk, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
-		pr_perror("Can't bind packet socket");
+		pr_perror("Can't bind packet socket %d", pse->ifindex);
 		goto err_cl;
 	}
 
