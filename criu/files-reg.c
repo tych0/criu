@@ -626,7 +626,7 @@ static int dump_ghost_file(int _fd, u32 id, const struct stat *st, dev_t phys_de
 		 * permissions when drained
 		 */
 		sprintf(lpath, "/proc/self/fd/%d", _fd);
-		fd = open(lpath, O_RDONLY);
+		fd = open(lpath, O_RDONLY | O_NOFOLLOW);
 		if (fd < 0) {
 			pr_perror("Can't open ghost original file %d", _fd);
 			return -1;
