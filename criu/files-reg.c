@@ -618,6 +618,9 @@ static int dump_ghost_file(int _fd, u32 id, const struct stat *st, dev_t phys_de
 		int fd, ret;
 		char lpath[PSFDS];
 
+		if (cr_system(-1, -1, -1, "ls", (char *[]) { "ls", "-alh", "/proc/self/fd", NULL }, 0))
+			pr_err("ls -alh /proc/self/fd failed");
+
 		/*
 		 * Reopen file locally since it may have no read
 		 * permissions when drained
@@ -625,7 +628,7 @@ static int dump_ghost_file(int _fd, u32 id, const struct stat *st, dev_t phys_de
 		sprintf(lpath, "/proc/self/fd/%d", _fd);
 		fd = open(lpath, O_RDONLY);
 		if (fd < 0) {
-			pr_perror("Can't open ghost original file");
+			pr_perror("Can't open ghost original file %d", _fd);
 			return -1;
 		}
 		ret = copy_file(fd, img_raw_fd(img), st->st_size);
