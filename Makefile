@@ -186,7 +186,8 @@ $(eval $(call gen-built-in,images))
 .PHONY: .FORCE
 
 # Compel get used by CRIU, build it earlier
-$(eval $(call gen-built-in,compel))
+compel/%:
+	$(Q) $(MAKE) $(build)=compel $@
 
 #
 # CRIU building done in own directory
