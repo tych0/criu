@@ -19,7 +19,9 @@ struct syscall_exec_desc {
 #include "sys-exec-tbl.c"
 #undef SYSCALL
 
-static struct syscall_exec_desc *find_syscall(char *name)
+#ifndef ARCH_HAS_FIND_SYSCALL
+struct syscall_exec_desc *
+find_syscall(char *name, int __attribute__((unused)) pid)
 {
 	int i;
 
@@ -29,6 +31,7 @@ static struct syscall_exec_desc *find_syscall(char *name)
 
 	return NULL;
 }
+#endif
 
 #define MAX_ARGS	6
 
@@ -130,7 +133,7 @@ int cr_exec(int pid, char **opt)
 		goto out;
 	}
 
-	si = find_syscall(sys_name);
+	si = find_syscall(sys_name, pid);
 	if (!si) {
 		pr_err("Unknown syscall [%s]\n", sys_name);
 		goto out;
