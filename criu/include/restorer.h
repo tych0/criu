@@ -18,7 +18,6 @@
 #include "posix-timer.h"
 #include "timerfd.h"
 #include "shmem.h"
-#include "sigframe.h"
 #include "parasite-vdso.h"
 
 #include <time.h>
