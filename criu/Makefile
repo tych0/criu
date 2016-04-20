@@ -169,6 +169,12 @@ install: criu
 	$(Q) install -m 755 $(SRC_DIR)/scripts/systemd-autofs-restart.sh $(DESTDIR)$(LIBEXECDIR)/criu/scripts
 .PHONY: install
 
+uninstall:
+	$(E) " UNINSTALL" criu
+	$(Q) $(RM) $(addprefix $(DESTDIR)$(SBINDIR)/,criu)
+	$(Q) $(RM) $(addprefix $(DESTDIR)$(INCLUDEDIR)/,$(notdir $(UAPI_HEADERS)))
+.PHONY: uninstall
+
 #
 # Final @all target.
 all: criu
