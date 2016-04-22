@@ -171,7 +171,7 @@ int join_ns_add(const char *type, char *ns_file, char *extra_opts)
 		jn->nd = &mnt_ns_desc;
 		join_ns_flags |= CLONE_NEWNS;
 	} else {
-		pr_perror("invalid namespace type %s\n", type);
+		pr_err("invalid namespace type %s\n", type);
 		goto err;
 	}
 
@@ -837,7 +837,7 @@ static int check_user_ns(int pid)
 		}
 
 		if (setgroups(0, NULL) < 0) {
-			pr_perror("Unable to drop supplementary groups\n");
+			pr_perror("Unable to drop supplementary groups");
 			return -1;
 		}
 
