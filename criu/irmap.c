@@ -261,9 +261,7 @@ char *irmap_lookup(unsigned int s_dev, unsigned long i_ino)
 	/* Let's scan any user provided paths first; since the user told us
 	 * about them, hopefully they're more interesting than our hints.
 	 */
-	pr_debug("Scanning CLI hints\n");
 	list_for_each_entry(o, &opts.irmap_scan_paths, node) {
-		pr_debug("`- scan [%s] cli hint\n", o->path);
 		c = irmap_scan(o->ir, s_dev, i_ino);
 		if (c) {
 			pr_debug("\tScanned %s\n", c->path);
@@ -272,7 +270,6 @@ char *irmap_lookup(unsigned int s_dev, unsigned long i_ino)
 		}
 	}
 
-	pr_debug("Scanning standard hints\n");
 	for (h = hints; h->path; h++) {
 		pr_debug("Scanning %s hint\n", h->path);
 		c = irmap_scan(h, s_dev, i_ino);
