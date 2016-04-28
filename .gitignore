@@ -37,3 +37,4 @@ criu/protobuf-desc-gen.h
 lib/build/
 lib/c/criu.pc
 scripts/build/qemu-user-static/*
+lib/.crit-setup.files
