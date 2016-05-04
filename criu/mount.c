@@ -1679,6 +1679,17 @@ out:
 	return ret;
 }
 
+static int debugfs_parse(struct mount_info *pm)
+{
+	/* tracefs is automounted underneath debugfs sometimes, and the
+	 * kernel's overmounting protection prevents us from mounting debugfs
+	 * first without tracefs, so let's always mount debugfs MS_REC.
+	 */
+	pm->flags |= MS_REC;
+
+	return 0;
+}
+
 static int cgroup_parse(struct mount_info *pm)
 {
 	if (!(root_ns_mask & CLONE_NEWCGROUP))
@@ -1780,6 +1791,10 @@ static struct fstype fstypes[] = {
 	}, {
 		.name = "debugfs",
 		.code = FSTYPE__DEBUGFS,
+		.parse = debugfs_parse,
+	}, {
+		.name = "tracefs",
+		.code = FSTYPE__TRACEFS,
 	}, {
 		.name = "cgroup",
 		.code = FSTYPE__CGROUP,
