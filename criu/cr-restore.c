@@ -79,7 +79,7 @@
 #include "fault-injection.h"
 #include "uffd.h"
 #include "sk-queue.h"
-
+#include "syscall-types.h"
 #include "parasite-syscall.h"
 
 #include "protobuf.h"
@@ -2644,11 +2644,15 @@ static int prepare_mm(pid_t pid, struct task_restore_args *args)
 		args->mm_saved_auxv[i] = (auxv_t)mm->mm_saved_auxv[i];
 	}
 
-	exe_fd = open_reg_by_id(mm->exe_file_id);
-	if (exe_fd < 0)
-		goto out;
+	if (!(opts.unshare_flags & UNSHARE_UNPRIVILEDGED)) {
+		exe_fd = open_reg_by_id(mm->exe_file_id);
+		if (exe_fd < 0)
+			goto out;
 
-	args->fd_exe_link = exe_fd;
+		args->fd_exe_link = exe_fd;
+	} else
+		args->fd_exe_link = -1;
+
 	ret = 0;
 out:
 	return ret;
