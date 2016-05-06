@@ -2161,7 +2161,7 @@ static int restore_root_task(struct pstree_item *init)
 	}
 
 	/* Unlock network before disabling repair mode on sockets */
-	network_unlock();
+	network_unlock(opts.final_state != TASK_FROZEN);
 
 	/*
 	 * Stop getting sigchld, after we resume the tasks they

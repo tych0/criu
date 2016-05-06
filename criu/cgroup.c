@@ -1272,7 +1272,7 @@ int restore_freezer_state(void)
 	return restore_cgroup_prop(freezer_state_entry, freezer_path, freezer_path_len);
 }
 
-static void add_freezer_state_for_restore(CgroupPropEntry *entry, char *path, size_t path_len)
+static int add_freezer_state_for_restore(CgroupPropEntry *entry, char *path, size_t path_len)
 {
 	BUG_ON(path_len >= sizeof(freezer_path));
 
@@ -1290,15 +1290,24 @@ static void add_freezer_state_for_restore(CgroupPropEntry *entry, char *path, si
 		for (i = 0; i < max_len; i++) {
 			if (freezer_path[i] != path[i]) {
 				freezer_path[i] = 0;
-				return;
+				return 0;
 			}
 		}
 	}
 
+	if (opts.final_state == TASK_FROZEN && strcmp(entry->value, "FROZEN")) {
+		xfree(entry->value);
+		entry->value = xstrdup("FROZEN");
+		if (!entry->value)
+			return -1;
+	}
+
 	freezer_state_entry = entry;
+
 	/* Path is not null terminated at path_len */
 	strncpy(freezer_path, path, path_len);
 	freezer_path[path_len] = 0;
+	return 0;
 }
 
 static int prepare_cgroup_dir_properties(char *path, int off, CgroupDirEntry **ents,
@@ -1320,7 +1329,9 @@ static int prepare_cgroup_dir_properties(char *path, int off, CgroupDirEntry **e
 				bool special = false;
 
 				if (!strcmp(e->properties[j]->name, "freezer.state")) {
-					add_freezer_state_for_restore(e->properties[j], path, off2);
+					if (add_freezer_state_for_restore(e->properties[j], path, off2) < 0)
+						return -1;
+
 					continue; /* skip restore now */
 				}
 

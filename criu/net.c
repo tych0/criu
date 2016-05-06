@@ -1285,11 +1285,14 @@ int network_lock(void)
 	return network_lock_internal();
 }
 
-void network_unlock(void)
+void network_unlock(bool remove_iptables)
 {
 	pr_info("Unlock network\n");
 
 	cpt_unlock_tcp_connections();
+	if (!remove_iptables)
+		return;
+
 	rst_unlock_tcp_connections();
 
 	if (root_ns_mask & CLONE_NEWNET) {

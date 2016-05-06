@@ -21,7 +21,7 @@ static char buf[512];
  */
 
 static const char *nf_conn_cmd = "%s -t filter %s %s --protocol tcp "
-	"--source %s --sport %d --destination %s --dport %d -j DROP";
+	"--source %s --sport %d --destination %s --dport %d -j DROP -A CRIU";
 
 static char iptable_cmd_ipv4[] = "iptables";
 static char iptable_cmd_ipv6[] = "ip6tables";
