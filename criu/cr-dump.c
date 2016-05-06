@@ -1491,7 +1491,7 @@ int cr_pre_dump_tasks(pid_t pid)
 		opts.track_mem = true;
 	}
 
-	if (opts.final_state == TASK_DEAD) {
+	if (opts.final_state == TASK_DEAD || opts.final_state == TASK_FROZEN) {
 		pr_info("Enforcing tasks run after pre-dump.\n");
 		opts.final_state = TASK_ALIVE;
 	}
