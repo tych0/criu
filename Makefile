@@ -136,7 +136,7 @@ endif
 CFLAGS			+= $(WARNINGS) $(DEFINES)
 
 # Default target
-all: compel criu lib
+all: compel/compel criu lib
 .PHONY: all
 
 #
