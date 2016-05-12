@@ -1298,6 +1298,21 @@ void network_unlock(void)
 	}
 }
 
+void gc_network(bool show_only)
+{
+	cpt_gc_unlock_tcp_connections();
+	if (show_only)
+	{
+		pr_info("Network rules:\n");
+		printf("Network rules:\n");
+		list_tcp_connections();
+	}
+	else
+	{
+		rst_unlock_tcp_connections();
+	}
+}
+
 int veth_pair_add(char *in, char *out)
 {
 	char *aux;

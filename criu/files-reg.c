@@ -447,6 +447,52 @@ out:
 	return ret;
 }
 
+static int delete_one_remap(struct remap_info *ri)
+{
+	RemapFilePathEntry *rfe = ri->rfe;
+	struct reg_file_info *rfi = ri->rfi;
+
+	if (rfe->remap_type == REMAP_TYPE__LINKED) {
+		if (open_remap_linked(rfi, rfe))
+		{
+			pr_err("open_remap_linked failed");
+			return -1;
+		}
+
+		int mntns_root = mntns_get_root_by_mnt_id(rfi->remap->rmnt_id);
+		if (!unlinkat(mntns_root, rfi->remap->rpath, rfi->remap->is_dir ? AT_REMOVEDIR : 0))
+		{
+			pr_info("deleted remap - %s\n", rfi->remap->rpath);
+		}
+		else
+		{
+			pr_err("unlinkat failed");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int show_one_remap(struct remap_info *ri)
+{
+	RemapFilePathEntry *rfe = ri->rfe;
+	struct reg_file_info *rfi = ri->rfi;
+
+	if (rfe->remap_type == REMAP_TYPE__LINKED) {
+		if (open_remap_linked(rfi, rfe))
+		{
+			pr_err("open_remap_linked failed");
+			return -1;
+		}
+
+		pr_info("%s\n", rfi->remap->rpath);
+		printf("%s\n", rfi->remap->rpath);
+	}
+
+	return 0;
+}
+
 /* We separate the prepartion of PROCFS remaps because they allocate pstree
  * items, which need to be seen by the root task. We can't do all remaps here,
  * because the files haven't been loaded yet.
@@ -484,6 +530,26 @@ int prepare_remaps(void)
 	}
 
 	return ret;
+}
+
+void gc_collected_remaps(bool show_only)
+{
+	struct remap_info *ri;
+
+	if (show_only)
+	{
+		pr_info("Link remaps:\n");
+		printf("Link remaps:\n");
+		list_for_each_entry(ri, &remaps, list) {
+			show_one_remap(ri);
+		}
+	}
+	else
+	{
+		list_for_each_entry(ri, &remaps, list) {
+			delete_one_remap(ri);
+		}
+	}
 }
 
 static void try_clean_ghost(struct remap_info *ri)

@@ -7,6 +7,7 @@ extern int nf_unlock_connection(struct inet_sk_desc *);
 
 struct inet_sk_info;
 extern int nf_unlock_connection_info(struct inet_sk_info *);
+extern int nf_unlock_connection_show_info(struct inet_sk_info *);
 
 extern void preload_netfilter_modules(void);
 

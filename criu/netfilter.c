@@ -94,6 +94,30 @@ static int nf_connection_switch_raw(int family, u32 *src_addr, u16 src_port,
 	return 0;
 }
 
+static int nf_connection_show(int family, u32 *src_addr, u16 src_port,
+						u32 *dst_addr, u16 dst_port)
+{
+	char sip[INET_ADDR_LEN], dip[INET_ADDR_LEN];
+
+	if (family != AF_INET && family != AF_INET6)
+	{
+		pr_err("Unknown socket family %d\n", family);
+		return -1;
+	}
+
+	if (!inet_ntop(family, (void *)src_addr, sip, INET_ADDR_LEN) ||
+			!inet_ntop(family, (void *)dst_addr, dip, INET_ADDR_LEN)) {
+		pr_perror("nf: Can't translate ip addr");
+		return -1;
+	}
+
+	pr_info("%s:%d - %s:%d\n",
+			sip, (int)src_port, dip, (int)dst_port);
+	printf("%s:%d - %s:%d\n",
+			sip, (int)src_port, dip, (int)dst_port);
+	return 0;
+}
+
 static int nf_connection_switch(struct inet_sk_desc *sk, bool lock)
 {
 	int ret = 0;
@@ -138,6 +162,20 @@ int nf_unlock_connection_info(struct inet_sk_info *si)
 	 * rollback nothing in case of any error,
 	 * because nobody checks errors of this function
 	 */
+
+	return ret;
+}
+
+int nf_unlock_connection_show_info(struct inet_sk_info *si)
+{
+	int ret = 0;
+
+	ret |= nf_connection_show(si->ie->family,
+			si->ie->src_addr, si->ie->src_port,
+			si->ie->dst_addr, si->ie->dst_port);
+	ret |= nf_connection_show(si->ie->family,
+			si->ie->dst_addr, si->ie->dst_port,
+			si->ie->src_addr, si->ie->src_port);
 
 	return ret;
 }

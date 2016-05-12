@@ -51,6 +51,7 @@ extern int collect_remaps_and_regfiles(void);
 extern void delete_link_remaps(void);
 extern void free_link_remaps(void);
 extern int prepare_remaps(void);
+extern void gc_collected_remaps(bool show_only);
 extern void try_clean_remaps(int ns_fd);
 
 extern int strip_deleted(struct fd_link *link);

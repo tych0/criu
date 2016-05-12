@@ -28,6 +28,7 @@ extern int cr_exec(int pid, char **opts);
 extern int cr_dedup(void);
 extern int cr_lazy_pages(void);
 extern int prepare_task_entries(void);
+extern int cr_garbage_collect(bool show);
 
 extern int check_add_feature(char *arg);
 

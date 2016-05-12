@@ -109,6 +109,7 @@ struct cr_options {
 	unsigned int		timeout;
 	unsigned int		empty_ns;
 	bool			lazy_pages;
+	bool			gc_show;
 };
 
 extern struct cr_options opts;
