@@ -1669,6 +1669,22 @@ out:
 	return ret;
 }
 
+static int do_simple_mount(struct mount_info *mi, const char *src, const
+			   char *fstype, unsigned long mountflags);
+
+static int debugfs_mount(struct mount_info *mi, const char *src,
+			 const char *fstype, unsigned long mountflags)
+{
+	struct mount_info *it;
+
+	for (it = mntinfo; it; it = it->next) {
+		if (it->fstype->code == FSTYPE__TRACEFS)
+			it->mounted = true;
+	}
+
+	return do_simple_mount(mi, src, fstype, mountflags);
+}
+
 static int cgroup_parse(struct mount_info *pm)
 {
 	if (!(root_ns_mask & CLONE_NEWCGROUP))
@@ -1775,6 +1791,7 @@ static struct fstype fstypes[] = {
 		 * need to mount debugfs with MS_REC to propagate tracefs if it
 		 * is present.
 		 */
+		.mount = debugfs_mount,
 		.flags = MS_REC,
 	}, {
 		.name = "tracefs",
