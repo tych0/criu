@@ -1223,6 +1223,42 @@ err:
 	return ret;
 }
 
+static int network_lock_init()
+{
+	char conf[] =	"*filter\n"
+				":CRIU_IN - [0:0]\n"
+				":CRIU_OUT - [0:0]\n"
+				"-I INPUT -j CRIU_IN\n"
+				"-I OUTPUT -j CRIU_OUT\n"
+				"COMMIT\n";
+	int ret = 0;
+
+
+	ret |= iptables_restore(false, conf, sizeof(conf) - 1);
+	if (kdat.ipv6)
+		ret |= iptables_restore(true, conf, sizeof(conf) - 1);
+
+	return ret;
+}
+
+static int network_unlock_fini()
+{
+	char conf[] =	"*filter\n"
+			":CRIU_IN - [0:0]\n"
+			":CRIU_OUT - [0:0]\n"
+			"-D INPUT -j CRIU_IN\n"
+			"-D OUTPUT -j CRIU_OUT\n"
+			"-X CRIU_IN\n"
+			"-X CRIU_OUT\n"
+			"COMMIT\n";
+	int ret = 0;
+
+	ret |= iptables_restore(false, conf, sizeof(conf) - 1);
+	if (kdat.ipv6)
+		ret |= iptables_restore(true, conf, sizeof(conf) - 1);
+
+	return ret;
+}
 static int network_lock_internal()
 {
 	char conf[] =	"*filter\n"
@@ -1276,8 +1312,10 @@ int network_lock(void)
 	pr_info("Lock network\n");
 
 	/* Each connection will be locked on dump */
-	if  (!(root_ns_mask & CLONE_NEWNET))
+	if  (!(root_ns_mask & CLONE_NEWNET)) {
+		network_lock_init();
 		return 0;
+	}
 
 	if (run_scripts(ACT_NET_LOCK))
 		return -1;
@@ -1289,16 +1327,11 @@ void network_unlock(bool remove_iptables)
 {
 	pr_info("Unlock network\n");
 
-	cpt_unlock_tcp_connections();
-	if (!remove_iptables)
-		return;
-
-	rst_unlock_tcp_connections();
-
 	if (root_ns_mask & CLONE_NEWNET) {
 		run_scripts(ACT_NET_UNLOCK);
 		network_unlock_internal();
-	}
+	} else
+		network_unlock_fini();
 }
 
 int veth_pair_add(char *in, char *out)

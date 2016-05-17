@@ -74,7 +74,7 @@ static int nf_connection_switch_raw(int family, u32 *src_addr, u16 src_port,
 
 	snprintf(buf, sizeof(buf), nf_conn_cmd, cmd,
 			lock ? "-A" : "-D",
-			input ? "INPUT" : "OUTPUT",
+			input ? "CRIU_IN" : "CRIU_OUT",
 			dip, (int)dst_port, sip, (int)src_port);
 
 	pr_debug("\tRunning iptables [%s]\n", buf);
