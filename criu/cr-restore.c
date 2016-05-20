@@ -275,7 +275,6 @@ static int root_prepare_shared(void)
 	if (ret)
 		goto err;
 
-	show_saved_shmems();
 	show_saved_files();
 err:
 	return ret;
