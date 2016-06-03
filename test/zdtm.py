@@ -15,7 +15,6 @@ import linecache
 import random
 import string
 import imp
-import socket
 import fcntl
 import errno
 import datetime
@@ -24,6 +23,8 @@ import yaml
 os.chdir(os.path.dirname(os.path.abspath(__file__)))
 
 prev_line = None
+
+
 def traceit(f, e, a):
 	if e == "line":
 		lineno = f.f_lineno
@@ -44,10 +45,12 @@ def traceit(f, e, a):
 # sit in the same dir
 tests_root = None
 
+
 def clean_tests_root():
 	global tests_root
 	if tests_root:
 		os.rmdir(tests_root)
+
 
 def make_tests_root():
 	global tests_root
@@ -60,11 +63,13 @@ def make_tests_root():
 
 report_dir = None
 
+
 def init_report(path):
 	global report_dir
 	report_dir = path
 	if not os.access(report_dir, os.F_OK):
 		os.makedirs(report_dir)
+
 
 def add_to_report(path, tgt_name):
 	global report_dir
@@ -82,6 +87,7 @@ def add_to_report(path, tgt_name):
 				os.mkdir(os.path.dirname(tgt_path))
 			shutil.copy2(path, tgt_path)
 
+
 def add_to_output(path):
 	global report_dir
 	if not report_dir:
@@ -90,7 +96,7 @@ def add_to_output(path):
 	fdi = open(path, "r")
 	fdo = open(os.path.join(report_dir, "output"), "a")
 	while True:
-		buf = fdi.read(1<<20)
+		buf = fdi.read(1 << 20)
 		if not buf:
 			break
 		fdo.write(buf)
@@ -105,6 +111,7 @@ arch = os.uname()[4]
 #  ns -- namespaces, test is run in itw own set of namespaces
 #  uns -- user namespace, the same as above plus user namespace
 #
+
 
 class host_flavor:
 	def __init__(self, opts):
@@ -121,6 +128,7 @@ class host_flavor:
 	@staticmethod
 	def clean():
 		pass
+
 
 class ns_flavor:
 	__root_dirs = ["/bin", "/sbin", "/etc", "/lib", "/lib64", "/dev", "/dev/pts", "/dev/net", "/tmp", "/usr", "/proc"]
@@ -151,10 +159,10 @@ class ns_flavor:
 
 		# This Mayakovsky-style code gets list of libraries a binary
 		# needs minus vdso and gate .so-s
-		libs = map(lambda x: x[1] == '=>' and x[2] or x[0],		\
-				map(lambda x: x.split(),			\
-					filter(lambda x: not xl.match(x),	\
-						map(lambda x: x.strip(),	\
+		libs = map(lambda x: x[1] == '=>' and x[2] or x[0],
+				map(lambda x: x.split(),
+					filter(lambda x: not xl.match(x),
+						map(lambda x: x.strip(),
 							filter(lambda x: x.startswith('\t'), ldd.stdout.readlines())))))
 		ldd.wait()
 
@@ -181,16 +189,16 @@ class ns_flavor:
 			os.mkdir(self.root + dir)
 			os.chmod(self.root + dir, 0777)
 
-		for ldir in [ "/bin", "/sbin", "/lib", "/lib64" ]:
+		for ldir in ["/bin", "/sbin", "/lib", "/lib64"]:
 			os.symlink(".." + ldir, self.root + "/usr" + ldir)
 
 		self.__mknod("tty", os.makedev(5, 0))
 		self.__mknod("null", os.makedev(1, 3))
 		self.__mknod("net/tun")
 		self.__mknod("rtc")
-		self.__mknod("autofs", os.makedev(10, 235));
+		self.__mknod("autofs", os.makedev(10, 235))
 
-        def __copy_deps(self, deps):
+	def __copy_deps(self, deps):
 		for d in deps.split('|'):
 			if os.access(d, os.F_OK):
 				self.__copy_one(d)
@@ -249,35 +257,40 @@ class userns_flavor(ns_flavor):
 		pass
 
 
-flavors = { 'h': host_flavor, 'ns': ns_flavor, 'uns': userns_flavor }
+flavors = {'h': host_flavor, 'ns': ns_flavor, 'uns': userns_flavor}
 
 #
 # Helpers
 #
 
+
 def encode_flav(f):
 	return (flavors.keys().index(f) + 128)
 
+
 def decode_flav(i):
-        i = i - 128
-        if flavors.has_key(i):
-                return flavors.keys()[i - 128]
-        return "unknown"
+	i = i - 128
+	if i in flavors:
+		return flavors.keys()[i - 128]
+	return "unknown"
+
 
 def tail(path):
 	p = subprocess.Popen(['tail', '-n1', path],
 			stdout = subprocess.PIPE)
 	return p.stdout.readline()
 
+
 def rpidfile(path):
 	return open(path).readline().strip()
+
 
 def wait_pid_die(pid, who, tmo = 30):
 	stime = 0.1
 	while stime < tmo:
 		try:
 			os.kill(int(pid), 0)
-		except: # Died
+		except:  # Died
 			break
 
 		print "Wait for %s to die for %f" % (who, stime)
@@ -285,6 +298,7 @@ def wait_pid_die(pid, who, tmo = 30):
 		stime *= 2
 	else:
 		raise test_fail_exc("%s die" % who)
+
 
 def test_flag(tdesc, flag):
 	return flag in tdesc.get('flags', '').split()
@@ -295,9 +309,11 @@ def test_flag(tdesc, flag):
 # test checks fail
 #
 
+
 class test_fail_exc:
 	def __init__(self, step):
 		self.step = step
+
 
 class test_fail_expected_exc:
 	def __init__(self, cr_action):
@@ -306,6 +322,7 @@ class test_fail_expected_exc:
 #
 # A test from zdtm/ directory.
 #
+
 
 class zdtm_test:
 	def __init__(self, name, desc, flavor, freezer):
@@ -316,16 +333,16 @@ class zdtm_test:
 		self.__pid = 0
 		self.__flavor = flavor
 		self.__freezer = freezer
-		self._bins = [ name ]
+		self._bins = [name]
 		self._env = {}
 		self._deps = desc.get('deps', [])
 		self.auto_reap = True
 
 	def __make_action(self, act, env = None, root = None):
-		sys.stdout.flush() # Not to let make's messages appear before ours
+		sys.stdout.flush()  # Not to let make's messages appear before ours
 		tpath = self.__name + '.' + act
-		s_args = ['make', '--no-print-directory', \
-			 	'-C', os.path.dirname(tpath), \
+		s_args = ['make', '--no-print-directory',
+				'-C', os.path.dirname(tpath),
 				      os.path.basename(tpath)]
 
 		if env:
@@ -380,7 +397,7 @@ class zdtm_test:
 				criu_dir = os.path.dirname(os.getcwd())
 				criu_dir_r = "%s%s" % (self.__flavor.root, criu_dir)
 
-				env['ZDTM_CRIU'] = os.path.dirname(os.getcwd());
+				env['ZDTM_CRIU'] = os.path.dirname(os.getcwd())
 				subprocess.check_call(["mkdir", "-p", criu_dir_r])
 
 		self.__make_action('pid', env, self.__flavor.root)
@@ -405,11 +422,11 @@ class zdtm_test:
 
 	def stop(self):
 		self.__freezer.thaw()
-		self.getpid() # Read the pid from pidfile back
+		self.getpid()  # Read the pid from pidfile back
 		self.kill(signal.SIGTERM)
 
 		res = tail(self.__name + '.out')
-		if not 'PASS' in res.split():
+		if 'PASS' not in res.split():
 			raise test_fail_exc("result check")
 
 	def getpid(self):
@@ -496,7 +513,7 @@ class inhfd_test:
 		if self.__peer_pid == 0:
 			os.setsid()
 
-			getattr(self.__fdtyp, "child_prep", lambda fd : None)(peer_file)
+			getattr(self.__fdtyp, "child_prep", lambda fd: None)(peer_file)
 
 			os.close(0)
 			os.close(1)
@@ -575,15 +592,15 @@ class groups_test(zdtm_test):
 
 		self._bins += self.__subs
 		self._deps += get_test_desc('zdtm/lib/groups')['deps']
-		self._env = { 'ZDTM_TESTS': self.__real_name }
+		self._env = {'ZDTM_TESTS': self.__real_name}
 
 	def __get_start_cmd(self, name):
 		tdir = os.path.dirname(name)
 		tname = os.path.basename(name)
 
 		s_args = ['make', '--no-print-directory', '-C', tdir]
-		subprocess.check_call(s_args + [ tname + '.cleanout' ])
-		s = subprocess.Popen(s_args + [ '--dry-run', tname + '.pid' ], stdout = subprocess.PIPE)
+		subprocess.check_call(s_args + [tname + '.cleanout'])
+		s = subprocess.Popen(s_args + ['--dry-run', tname + '.pid'], stdout = subprocess.PIPE)
 		cmd = s.stdout.readlines().pop().strip()
 		s.wait()
 
@@ -607,11 +624,11 @@ class groups_test(zdtm_test):
 
 		for test in self.__subs:
 			res = tail(test + '.out')
-			if not 'PASS' in res.split():
+			if 'PASS' not in res.split():
 				raise test_fail_exc("sub %s result check" % test)
 
 
-test_classes = { 'zdtm': zdtm_test, 'inhfd': inhfd_test, 'groups': groups_test }
+test_classes = {'zdtm': zdtm_test, 'inhfd': inhfd_test, 'groups': groups_test}
 
 #
 # CRIU when launched using CLI
@@ -619,6 +636,8 @@ test_classes = { 'zdtm': zdtm_test, 'inhfd': inhfd_test, 'groups': groups_test }
 
 criu_bin = "../criu/criu"
 join_ns_file = '/run/netns/zdtm_netns'
+
+
 class criu_cli:
 	def __init__(self, opts):
 		self.__test = None
@@ -690,8 +709,8 @@ class criu_cli:
 			print_fname(fname, 'strace')
 			strace = ["strace", "-o", fname, '-T']
 			if action == 'restore':
-				strace += [ '-f' ]
-				s_args += [ '--action-script', os.getcwd() + '/../scripts/fake-restore.sh' ]
+				strace += ['-f']
+				s_args += ['--action-script', os.getcwd() + '/../scripts/fake-restore.sh']
 
 		if self.__script:
 			s_args += ['--action-script', self.__script]
@@ -714,9 +733,9 @@ class criu_cli:
 					# on restore we move only a log file, because we need images
 					os.rename(os.path.join(__ddir, log), os.path.join(__ddir, log + ".fail"))
 				# try again without faults
-		                print "Run criu " + action
+				print "Run criu " + action
 				ret = self.__criu(action, s_args, False, strace, preexec)
-		                grep_errors(os.path.join(__ddir, log))
+				grep_errors(os.path.join(__ddir, log))
 				if ret == 0:
 					return
 			if self.__test.blocking() or (self.__sat and action == 'restore'):
@@ -737,9 +756,9 @@ class criu_cli:
 		if self.__page_server:
 			print "Adding page server"
 
-			ps_opts = [ "--port", "12345", "--daemon", "--pidfile", "ps.pid" ]
+			ps_opts = ["--port", "12345", "--daemon", "--pidfile", "ps.pid"]
 			if self.__dedup:
-				ps_opts += [ "--auto-dedup" ]
+				ps_opts += ["--auto-dedup"]
 
 			self.__criu_act("page-server", opts = ps_opts)
 			a_opts += ["--page-server", "--address", "127.0.0.1", "--port", "12345"]
@@ -747,9 +766,9 @@ class criu_cli:
 		a_opts += self.__test.getdopts()
 
 		if self.__dedup:
-			a_opts += [ "--auto-dedup" ]
+			a_opts += ["--auto-dedup"]
 
-		a_opts += [ "--timeout", "10" ]
+		a_opts += ["--timeout", "10"]
 
 		criu_dir = os.path.dirname(os.getcwd())
 		if os.getenv("GCOV"):
@@ -806,6 +825,7 @@ def try_run_hook(test, args):
 
 do_sbs = False
 
+
 def init_sbs():
 	if sys.stdout.isatty():
 		global do_sbs
@@ -813,17 +833,19 @@ def init_sbs():
 	else:
 		print "Can't do step-by-step in this runtime"
 
+
 def sbs(what):
 	if do_sbs:
 		raw_input("Pause at %s. Press any key to continue." % what)
 
+
 #
 # Main testing entity -- dump (probably with pre-dumps) and restore
 #
-
 def iter_parm(opt, dflt):
 	x = ((opt or str(dflt)) + ":0").split(':')
 	return (xrange(0, int(x[0])), float(x[1]))
+
 
 def cr(cr_api, test, opts):
 	if opts['nocr']:
@@ -860,12 +882,12 @@ def cr(cr_api, test, opts):
 # Additional checks that can be done outside of test process
 
 def get_visible_state(test):
-	maps	= {}
-	files	= {}
-	mounts	= {}
+	maps = {}
+	files = {}
+	mounts = {}
 
-	if not getattr(test, "static", lambda : False)() or \
-	   not getattr(test, "ns", lambda : False)():
+	if not getattr(test, "static", lambda: False)() or \
+	   not getattr(test, "ns", lambda: False)():
 		return ({}, {}, {})
 
 	r = re.compile('^[0-9]+$')
@@ -895,6 +917,7 @@ def get_visible_state(test):
 		mounts[pid] = cmounts
 	return files, maps, mounts
 
+
 def check_visible_state(test, state, opts):
 	new = get_visible_state(test)
 
@@ -911,7 +934,7 @@ def check_visible_state(test, state, opts):
 		if old_maps != new_maps:
 			print "%s: Old maps lost: %s" % (pid, old_maps - new_maps)
 			print "%s: New maps appeared: %s" % (pid, new_maps - old_maps)
-			if not opts['fault']: # skip parasite blob
+			if not opts['fault']:  # skip parasite blob
 				raise test_fail_exc("maps compare")
 
 		old_mounts = state[2][pid]
@@ -973,10 +996,10 @@ class cg_freezer:
 			self.__set_state('THAWED')
 
 	def getdopts(self):
-		return [ '--freeze-cgroup', self.__path, '--manage-cgroups' ]
+		return ['--freeze-cgroup', self.__path, '--manage-cgroups']
 
 	def getropts(self):
-		return [ '--manage-cgroups' ]
+		return ['--manage-cgroups']
 
 
 def get_freezer(desc):
@@ -986,6 +1009,7 @@ def get_freezer(desc):
 	fd = desc.split(':')
 	fr = cg_freezer(path = fd[0], state = fd[1])
 	return fr
+
 
 def cmp_ns(ns1, match, ns2, msg):
 	ns1_ino = os.stat(ns1).st_ino
@@ -998,10 +1022,12 @@ def cmp_ns(ns1, match, ns2, msg):
 def check_joinns_state(t):
 	cmp_ns("/proc/%s/ns/net" % t.getpid(), "!=", join_ns_file, "join-ns")
 
+
 def check_unshare_state(t):
 	cmp_ns("/proc/%s/ns/pid" % t.getpid(), '==', "/proc/self/ns/pid", "unshare pid")
 	cmp_ns("/proc/%s/ns/mnt" % t.getpid(), '==', "/proc/self/ns/mnt", "unshare mnt")
 	cmp_ns("/proc/%s/ns/net" % t.getpid(), '!=', "/proc/self/ns/net", "unshare net")
+
 
 def do_run_test(tname, tdesc, flavs, opts):
 	tcname = tname.split('/')[0]
@@ -1059,6 +1085,7 @@ def do_run_test(tname, tdesc, flavs, opts):
 				cr_api.cleanup()
 			print_sep("Test %s PASS" % tname)
 
+
 class launcher:
 	def __init__(self, opts, nr_tests):
 		self.__opts = opts
@@ -1114,10 +1141,10 @@ class launcher:
 		self.__nr += 1
 		self.__show_progress()
 
-		nd = ('nocr', 'norst', 'pre', 'iters', 'page_server', 'sibling', 'unshare', \
-				'fault', 'keep_img', 'report', 'snaps', 'sat', 'script', \
+		nd = ('nocr', 'norst', 'pre', 'iters', 'page_server', 'sibling', 'unshare',
+				'fault', 'keep_img', 'report', 'snaps', 'sat', 'script',
 				'join_ns', 'dedup', 'sbs', 'freezecg', 'user', 'dry_run')
-		arg = repr((name, desc, flavor, { d: self.__opts[d] for d in nd }))
+		arg = repr((name, desc, flavor, {d: self.__opts[d] for d in nd}))
 
 		if self.__use_log:
 			logf = name.replace('/', '_') + ".log"
@@ -1126,10 +1153,10 @@ class launcher:
 			logf = None
 			log = None
 
-		sub = subprocess.Popen(["./zdtm_ct", "zdtm.py"], \
-				env = dict(os.environ, CR_CT_TEST_INFO = arg ), \
+		sub = subprocess.Popen(["./zdtm_ct", "zdtm.py"],
+				env = dict(os.environ, CR_CT_TEST_INFO = arg),
 				stdout = log, stderr = subprocess.STDOUT, close_fds = True)
-		self.__subs[sub.pid] = { 'sub': sub, 'log': logf, 'name': name }
+		self.__subs[sub.pid] = {'sub': sub, 'log': logf, 'name': name}
 
 		if test_flag(desc, 'excl'):
 			self.wait()
@@ -1144,7 +1171,7 @@ class launcher:
 				failed_flavor = decode_flav(os.WEXITSTATUS(status))
 				if self.__file_report:
 					testline = "not ok %d - %s # flavor %s" % (self.__runtest, sub['name'], failed_flavor)
-					details = { 'output': open(sub['log']).read() }
+					details = {'output': open(sub['log']).read()}
 					print >> self.__file_report, testline
 					print >> self.__file_report, yaml.dump(details, explicit_start=True, explicit_end=True, default_style='|')
 				if sub['log']:
@@ -1187,23 +1214,24 @@ class launcher:
 			print_sep("FAIL", "#")
 			sys.exit(1)
 
+
 def all_tests(opts):
 	desc = eval(open(opts['set'] + '.desc').read())
-	lst = subprocess.Popen(['find', desc['dir'], '-type', 'f', '-executable' ], \
+	lst = subprocess.Popen(['find', desc['dir'], '-type', 'f', '-executable'],
 			stdout = subprocess.PIPE)
 	excl = map(lambda x: os.path.join(desc['dir'], x), desc['exclude'])
-	tlist = filter(lambda x: \
-			not x.endswith('.checkskip') and \
-			not x.endswith('.hook') and \
-			not x in excl, \
-				map(lambda x: x.strip(), lst.stdout.readlines()) \
-		)
+	tlist = filter(lambda x:
+			not x.endswith('.checkskip') and
+			not x.endswith('.hook') and
+			x not in excl,
+			map(lambda x: x.strip(), lst.stdout.readlines())
+			)
 	lst.wait()
 	return tlist
 
 
 # Descriptor for abstract test not in list
-default_test={ }
+default_test = {}
 
 
 def get_test_desc(tname):
@@ -1215,12 +1243,13 @@ def get_test_desc(tname):
 
 
 def self_checkskip(tname):
-	chs = tname  + '.checkskip'
+	chs = tname + '.checkskip'
 	if os.access(chs, os.X_OK):
 		ch = subprocess.Popen([chs])
 		return not ch.wait() == 0
 
 	return False
+
 
 def print_fname(fname, typ):
 	print "=[%s]=> %s" % (typ, fname)
@@ -1228,6 +1257,7 @@ def print_fname(fname, typ):
 
 def print_sep(title, sep = "=", width = 80):
 	print (" " + title + " ").center(width, sep)
+
 
 def grep_errors(fname):
 	first = True
@@ -1241,6 +1271,7 @@ def grep_errors(fname):
 	if not first:
 		print_sep("ERROR OVER", "-", 60)
 
+
 def run_tests(opts):
 	excl = None
 	features = {}
@@ -1248,7 +1279,7 @@ def run_tests(opts):
 	if opts['pre'] or opts['snaps']:
 		if not criu_cli.check("mem_dirty_track"):
 			print "Tracking memory is not available"
-			return;
+			return
 
 	if opts['keep_going'] and (not opts['all']):
 		print "[WARNING] Option --keep-going is more useful with option --all."
@@ -1290,9 +1321,9 @@ def run_tests(opts):
 
 	if opts['join_ns']:
 		if subprocess.Popen(["ip", "netns", "add", "zdtm_netns"]).wait():
-                    raise Exception("Unable to create a network namespace")
+			raise Exception("Unable to create a network namespace")
 		if subprocess.Popen(["ip", "netns", "exec", "zdtm_netns", "ip", "link", "set", "up", "dev", "lo"]).wait():
-                    raise Exception("ip link set up dev lo")
+			raise Exception("ip link set up dev lo")
 
 	l = launcher(opts, len(torun))
 	try:
@@ -1314,7 +1345,7 @@ def run_tests(opts):
 
 			feat = tdesc.get('feature', None)
 			if feat:
-				if not features.has_key(feat):
+				if feat not in features:
 					print "Checking feature %s" % feat
 					features[feat] = criu_cli.check(feat)
 
@@ -1351,7 +1382,7 @@ def run_tests(opts):
 				# FIXME -- probably uns will make sense
 				run_flavs -= set(['ns', 'uns'])
 
-			#remove ns and uns flavor in join_ns
+			# remove ns and uns flavor in join_ns
 			if opts['join_ns']:
 				run_flavs -= set(['ns', 'uns'])
 			if opts['unshare']:
@@ -1367,6 +1398,7 @@ def run_tests(opts):
 			subprocess.Popen(["ip", "netns", "delete", "zdtm_netns"])
 
 sti_fmt = "%-40s%-10s%s"
+
 
 def show_test_info(t):
 	tdesc = get_test_desc(t)
@@ -1384,7 +1416,7 @@ def list_tests(opts):
 
 class group:
 	def __init__(self, tname, tdesc):
-		self.__tests = [ tname ]
+		self.__tests = [tname]
 		self.__desc = tdesc
 		self.__deps = set()
 
@@ -1417,8 +1449,8 @@ class group:
 	# which will call all tests' scripts in turn
 	def __dump_meta(self, fname, ext):
 		scripts = filter(lambda names: os.access(names[1], os.X_OK),
-		                 map(lambda test: (test, test + ext),
-		                     self.__tests))
+				map(lambda test: (test, test + ext),
+				self.__tests))
 		if scripts:
 			f = open(fname + ext, "w")
 			f.write("#!/bin/sh -e\n")
@@ -1448,6 +1480,7 @@ class group:
 		# write "meta" .checkskip and .hook scripts
 		self.__dump_meta(fname, '.checkskip')
 		self.__dump_meta(fname, '.hook')
+
 
 def group_tests(opts):
 	excl = None
@@ -1486,7 +1519,7 @@ def group_tests(opts):
 	suf = opts['name'] or 'group'
 
 	for g in groups:
-		if maxs > 1 and g.size() == 1: # Not much point in group test for this
+		if maxs > 1 and g.size() == 1:  # Not much point in group test for this
 			continue
 
 		fn = os.path.join("groups", "%s.%d" % (suf, nr))
@@ -1508,7 +1541,7 @@ def clean_stuff(opts):
 # main() starts here
 #
 
-if os.environ.has_key('CR_CT_TEST_INFO'):
+if 'CR_CT_TEST_INFO' in os.environ:
 	# Fork here, since we're new pidns init and are supposed to
 	# collect this namespace's zombies
 	status = 0
@@ -1524,7 +1557,7 @@ if os.environ.has_key('CR_CT_TEST_INFO'):
 					status = os.WEXITSTATUS(status)
 				else:
 					status = 1
-				break;
+				break
 
 	sys.exit(status)
 
@@ -1563,7 +1596,7 @@ rp.add_argument("-p", "--parallel", help = "Run test in parallel")
 rp.add_argument("--dry-run", help="Don't run tests, just pretend to", action='store_true')
 rp.add_argument("--script", help="Add script to get notified by criu")
 rp.add_argument("-k", "--keep-img", help = "Whether or not to keep images after test",
-		choices = [ 'always', 'never', 'failed' ], default = 'failed')
+		choices = ['always', 'never', 'failed'], default = 'failed')
 rp.add_argument("--report", help = "Generate summary report in directory")
 rp.add_argument("--keep-going", help = "Keep running tests in spite of failures", action = 'store_true')
 
@@ -1579,7 +1612,7 @@ gp.add_argument("-x", "--exclude", help = "Exclude tests from --all run", action
 
 cp = sp.add_parser("clean", help = "Clean something")
 cp.set_defaults(action = clean_stuff)
-cp.add_argument("what", choices = [ 'nsroot' ])
+cp.add_argument("what", choices = ['nsroot'])
 
 opts = vars(p.parse_args())
 if opts.get('sat', False):
