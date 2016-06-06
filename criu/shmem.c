@@ -653,7 +653,7 @@ again:
 		if (xfer.parent && page_in_parent(pgstate == PST_DIRTY))
 			ret = page_pipe_add_hole(pp, pgaddr);
 		else /* pgstate == PST_DUMP */
-			ret = page_pipe_add_page(pp, pgaddr);
+			ret = page_pipe_add_page(pp, pgaddr, 0);
 
 		if (ret == -EAGAIN) {
 			ret = dump_pages(pp, &xfer, addr);
