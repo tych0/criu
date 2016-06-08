@@ -315,14 +315,14 @@ static int ipv4_conf_op_old(char *tgt, int *conf, int n, int op, int *def_conf)
 	return 0;
 }
 
-int write_netdev_img(NetDeviceEntry *nde, struct cr_imgset *fds)
+int write_netdev_img(NetDeviceEntry *nde, struct cr_imgset *fds, struct nlattr **data)
 {
 	return pb_write_one(img_from_set(fds, CR_FD_NETDEV), nde, PB_NETDEV);
 }
 
 static int dump_one_netdev(int type, struct ifinfomsg *ifi,
 		struct nlattr **tb, struct cr_imgset *fds,
-		int (*dump)(NetDeviceEntry *, struct cr_imgset *))
+		int (*dump)(NetDeviceEntry *, struct cr_imgset *, struct nlattr **data))
 {
 	int ret = -1;
 	int i;
@@ -399,7 +399,7 @@ static int dump_one_netdev(int type, struct ifinfomsg *ifi,
 	if (!dump)
 		dump = write_netdev_img;
 
-	ret = dump(&netdev, fds);
+	ret = dump(&netdev, fds, tb);
 err_free:
 	xfree(netdev.conf4);
 	xfree(confs4);
@@ -441,7 +441,7 @@ static int dump_unknown_device(struct ifinfomsg *ifi, char *kind,
 	return -1;
 }
 
-static int dump_bridge(NetDeviceEntry *nde, struct cr_imgset *imgset)
+static int dump_bridge(NetDeviceEntry *nde, struct cr_imgset *imgset, struct nlattr **data)
 {
 	char spath[IFNAMSIZ + 16]; /* len("class/net//brif") + 1 for null */
 	int ret, fd;
@@ -473,7 +473,62 @@ static int dump_bridge(NetDeviceEntry *nde, struct cr_imgset *imgset)
 		return -1;
 	}
 
-	return write_netdev_img(nde, imgset);
+	return write_netdev_img(nde, imgset, data);
+}
+
+static int dump_macvlan(NetDeviceEntry *nde, struct cr_imgset *imgset, struct nlattr **tb)
+{
+	MacvlanLinkEntry macvlan = MACVLAN_LINK_ENTRY__INIT;
+	int ret;
+	struct nlattr *info[IFLA_INFO_MAX], *data[IFLA_MACVLAN_MAX];
+
+	if (!tb || !tb[IFLA_LINKINFO]) {
+		pr_err("no for macvlan\n");
+		return -1;
+	}
+
+	if (tb[IFLA_LINK]) {
+		nde->has_link = true;
+		nde->link = *(int *)RTA_DATA(tb[IFLA_LINK]);
+	}
+
+	if (tb[IFLA_LINK_NETNSID]) {
+		nde->has_netns_id = true;
+		nde->netns_id = *(int *)RTA_DATA(tb[IFLA_LINK_NETNSID]);
+	}
+
+	ret = nla_parse_nested(info, IFLA_INFO_MAX, tb[IFLA_LINKINFO], NULL);
+	if (ret < 0) {
+		pr_err("failed to parse nested linkinfo\n");
+		return -1;
+	}
+
+	if (!info[IFLA_INFO_DATA]) {
+		pr_err("no link info data for macvlan\n");
+		return -1;
+	}
+
+	ret = nla_parse_nested(data, IFLA_MACVLAN_MAX, info[IFLA_INFO_DATA], NULL);
+	if (ret < 0) {
+		pr_err("failed ot parse macvlan data\n");
+		return -1;
+	}
+
+	if (!data[IFLA_MACVLAN_MODE]) {
+		pr_err("macvlan mode required for %s\n", nde->name);
+		return -1;
+	}
+
+	macvlan.mode = *((u32 *)RTA_DATA(data[IFLA_MACVLAN_MODE]));
+
+	if (data[IFLA_MACVLAN_FLAGS])
+		macvlan.flags = *((u16 *) RTA_DATA(data[IFLA_MACVLAN_FLAGS]));
+
+	nde->macvlan = &macvlan;
+	ret = write_netdev_img(nde, imgset, data);
+
+	nde->macvlan = NULL;
+	return ret;
 }
 
 static int dump_one_ethernet(struct ifinfomsg *ifi, char *kind,
@@ -508,6 +563,8 @@ static int dump_one_ethernet(struct ifinfomsg *ifi, char *kind,
 
 		pr_warn("GRE tap device %s not supported natively\n", name);
 	}
+	if (!strcmp(kind, "macvlan"))
+		return dump_one_netdev(ND_TYPE__MACVLAN, ifi, tb, fds, dump_macvlan);
 
 	return dump_unknown_device(ifi, kind, tb, fds);
 }
@@ -809,34 +866,49 @@ struct newlink_req {
 	char buf[1024];
 };
 
-static int do_rtm_link_req(int msg_type, NetDeviceEntry *nde, int nlsk,
+static int populate_newlink_req(struct newlink_req *req, int msg_type, NetDeviceEntry *nde,
 		int (*link_info)(NetDeviceEntry *, struct newlink_req *))
 {
-	struct newlink_req req;
+	memset(req, 0, sizeof(*req));
 
-	memset(&req, 0, sizeof(req));
-
-	req.h.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
-	req.h.nlmsg_flags = NLM_F_REQUEST|NLM_F_ACK|NLM_F_CREATE;
-	req.h.nlmsg_type = msg_type;
-	req.h.nlmsg_seq = CR_NLMSG_SEQ;
-	req.i.ifi_family = AF_PACKET;
+	req->h.nlmsg_len = NLMSG_LENGTH(sizeof(struct ifinfomsg));
+	req->h.nlmsg_flags = NLM_F_REQUEST|NLM_F_ACK|NLM_F_CREATE;
+	req->h.nlmsg_type = msg_type;
+	req->h.nlmsg_seq = CR_NLMSG_SEQ;
+	req->i.ifi_family = AF_PACKET;
 	/*
 	 * SETLINK is called for external devices which may
 	 * have ifindex changed. Thus configure them by their
 	 * name only.
 	 */
 	if (msg_type == RTM_NEWLINK)
-		req.i.ifi_index = nde->ifindex;
-	req.i.ifi_flags = nde->flags;
+		req->i.ifi_index = nde->ifindex;
+	req->i.ifi_flags = nde->flags;
 
-	addattr_l(&req.h, sizeof(req), IFLA_IFNAME, nde->name, strlen(nde->name));
-	addattr_l(&req.h, sizeof(req), IFLA_MTU, &nde->mtu, sizeof(nde->mtu));
+	/* Note that this id isn't preserved anywhere, but since we don't
+	 * support nested namespaces, right now there is only one peer
+	 * namespace, the parent NS with an id of 0, so this works. In the
+	 * future, we'll need to be more careful about munging this ID to be
+	 * correct (or restoring namespaces in such a way that they get the
+	 * same ID).
+	 */
+	if (nde->has_netns_id)
+		addattr_l(&req->h, sizeof(*req), IFLA_LINK_NETNSID, &nde->netns_id, sizeof(nde->netns_id));
+
+	/* Like netns_id, this is not preserved across hosts (indeed, a link
+	 * with this ifindex may not even exist). We add support for rewriting
+	 * it in a later patch.
+	 */
+	if (nde->has_link)
+		addattr_l(&req->h, sizeof(*req), IFLA_LINK, &nde->link, sizeof(nde->link));
+
+	addattr_l(&req->h, sizeof(*req), IFLA_IFNAME, nde->name, strlen(nde->name));
+	addattr_l(&req->h, sizeof(*req), IFLA_MTU, &nde->mtu, sizeof(nde->mtu));
 
 	if (nde->has_address) {
 		pr_debug("Restore ll addr (%02x:../%d) for device\n",
 				(int)nde->address.data[0], (int)nde->address.len);
-		addattr_l(&req.h, sizeof(req), IFLA_ADDRESS,
+		addattr_l(&req->h, sizeof(*req), IFLA_ADDRESS,
 				nde->address.data, nde->address.len);
 	}
 
@@ -844,15 +916,26 @@ static int do_rtm_link_req(int msg_type, NetDeviceEntry *nde, int nlsk,
 		struct rtattr *linkinfo;
 		int ret;
 
-		linkinfo = NLMSG_TAIL(&req.h);
-		addattr_l(&req.h, sizeof(req), IFLA_LINKINFO, NULL, 0);
+		linkinfo = NLMSG_TAIL(&req->h);
+		addattr_l(&req->h, sizeof(*req), IFLA_LINKINFO, NULL, 0);
 
-		ret = link_info(nde, &req);
+		ret = link_info(nde, req);
 		if (ret < 0)
 			return ret;
 
-		linkinfo->rta_len = (void *)NLMSG_TAIL(&req.h) - (void *)linkinfo;
+		linkinfo->rta_len = (void *)NLMSG_TAIL(&req->h) - (void *)linkinfo;
 	}
+
+	return 0;
+}
+
+static int do_rtm_link_req(int msg_type, NetDeviceEntry *nde, int nlsk,
+		int (*link_info)(NetDeviceEntry *, struct newlink_req *))
+{
+	struct newlink_req req;
+
+	if (populate_newlink_req(&req, msg_type, nde, link_info) < 0)
+		return -1;
 
 	return do_rtnl_req(nlsk, &req, req.h.nlmsg_len, restore_link_cb, NULL, NULL);
 }
@@ -939,6 +1022,49 @@ static int bridge_link_info(NetDeviceEntry *nde, struct newlink_req *req)
 	return 0;
 }
 
+static int macvlan_link_info(NetDeviceEntry *nde, struct newlink_req *req)
+{
+	struct rtattr *macvlan_data;
+	MacvlanLinkEntry *macvlan = nde->macvlan;
+
+	if (!macvlan) {
+		pr_err("Missing macvlan link entry %d\n", nde->ifindex);
+		return -1;
+	}
+
+	addattr_l(&req->h, sizeof(*req), IFLA_INFO_KIND, "macvlan", 7);
+
+	macvlan_data = NLMSG_TAIL(&req->h);
+	addattr_l(&req->h, sizeof(*req), IFLA_INFO_DATA, NULL, 0);
+
+	addattr_l(&req->h, sizeof(*req), IFLA_MACVLAN_MODE, &macvlan->mode, sizeof(macvlan->mode));
+
+	if (macvlan->has_flags)
+		addattr_l(&req->h, sizeof(*req), IFLA_MACVLAN_FLAGS, &macvlan->flags, sizeof(macvlan->flags));
+
+	macvlan_data->rta_len = (void *)NLMSG_TAIL(&req->h) - (void *)macvlan_data;
+
+	return 0;
+}
+
+static int userns_restore_one_link(void *arg, int fd, pid_t pid)
+{
+	int nlsk, ret;
+	struct newlink_req *req = arg;
+
+	nlsk = socket(PF_NETLINK, SOCK_RAW, NETLINK_ROUTE);
+	if (nlsk < 0) {
+		pr_perror("Can't create nlk socket");
+		return -1;
+	}
+
+	addattr_l(&req->h, sizeof(*req), IFLA_NET_NS_PID, &pid, sizeof(pid));
+
+	ret = do_rtnl_req(nlsk, req, req->h.nlmsg_len, restore_link_cb, NULL, NULL);
+	close(nlsk);
+	return ret;
+}
+
 static int restore_link(NetDeviceEntry *nde, int nlsk)
 {
 	pr_info("Restoring link %s type %d\n", nde->name, nde->type);
@@ -955,7 +1081,23 @@ static int restore_link(NetDeviceEntry *nde, int nlsk)
 		return restore_one_tun(nde, nlsk);
 	case ND_TYPE__BRIDGE:
 		return restore_one_link(nde, nlsk, bridge_link_info);
+	case ND_TYPE__MACVLAN: {
+		if (root_ns_mask & CLONE_NEWNET) {
+			struct newlink_req req;
 
+			if (populate_newlink_req(&req, RTM_NEWLINK, nde, macvlan_link_info) < 0)
+				return -1;
+
+			if (userns_call(userns_restore_one_link, 0, &req, sizeof(req), -1) < 0) {
+				pr_err("couldn't restore macvlan interface %s via usernsd\n", nde->name);
+				return -1;
+			}
+
+			return 0;
+		}
+
+		return restore_one_link(nde, nlsk, macvlan_link_info);
+	}
 	default:
 		pr_err("Unsupported link type %d\n", nde->type);
 		break;
