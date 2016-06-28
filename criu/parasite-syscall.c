@@ -549,7 +549,7 @@ static int parasite_init_daemon(struct parasite_ctl *ctl, struct ns_id *net)
 		goto err;
 	}
 
-	ctl->sigreturn_addr = args->sigreturn_addr;
+	ctl->sigreturn_addr = (void*)(uintptr_t)args->sigreturn_addr;
 	ctl->daemonized = true;
 	pr_info("Parasite %d has been switched to daemon mode\n", pid);
 	return 0;
@@ -1101,7 +1101,7 @@ int parasite_cure_remote(struct parasite_ctl *ctl)
 		*ctl->addr_cmd = PARASITE_CMD_UNMAP;
 
 		args = parasite_args(ctl, struct parasite_unmap_args);
-		args->parasite_start = ctl->remote_map;
+		args->parasite_start = (uintptr_t)ctl->remote_map;
 		args->parasite_len = ctl->map_length;
 		if (parasite_unmap(ctl, ctl->parasite_ip))
 			return -1;
