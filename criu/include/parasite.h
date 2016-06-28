@@ -73,8 +73,8 @@ struct parasite_init_args {
 	s32				h_addr_len;
 	struct sockaddr_un		h_addr;
 	s32				log_level;
-	struct rt_sigframe		*sigframe;
 	u64				sigreturn_addr;
+	u64				sigframe; /* pointer to sigframe */
 	futex_t				daemon_connected;
 };
 
