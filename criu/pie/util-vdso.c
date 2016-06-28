@@ -83,11 +83,8 @@ static int has_elf_identity(Ehdr_t *ehdr)
 
 	BUILD_BUG_ON(sizeof(elf_ident) != sizeof(ehdr->e_ident));
 
-	if (builtin_memcmp(ehdr->e_ident, elf_ident, sizeof(elf_ident))) {
-		pr_err("Elf header magic mismatch\n");
+	if (builtin_memcmp(ehdr->e_ident, elf_ident, sizeof(elf_ident)))
 		return false;
-	}
-
 	return true;
 }
 
