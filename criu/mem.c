@@ -298,6 +298,8 @@ static int __parasite_dump_pages_seized(struct parasite_ctl *ctl,
 	ret = -1;
 	if (!delayed_dump)
 		cpp_flags |= PP_CHUNK_MODE;
+	if (!seized_native(ctl))
+		cpp_flags |= PP_COMPAT;
 	ctl->mem_pp = pp = create_page_pipe(vma_area_list->priv_size,
 					    pargs_iovs(args), cpp_flags);
 	if (!pp)
