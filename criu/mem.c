@@ -537,7 +537,7 @@ static int map_private_vma(struct pstree_item *t,
 		    vma->e->shmid != p->e->shmid)
 			break;
 
-		pr_info("COW 0x%016"PRIx64"-0x%016"PRIx64" 0x%016"PRIx64" vma\n",
+		pr_info("COW %#016"PRIx64"-%#016"PRIx64" %#016"PRIx64" vma\n",
 			vma->e->start, vma->e->end, vma->e->pgoff);
 		paddr = decode_pointer(p->premmaped_addr);
 
@@ -561,7 +561,7 @@ static int map_private_vma(struct pstree_item *t,
 		 * The respective memory area was NOT found in the parent.
 		 * Map a new one.
 		 */
-		pr_info("Map 0x%016"PRIx64"-0x%016"PRIx64" 0x%016"PRIx64" vma\n",
+		pr_info("Map %#016"PRIx64"-%#016"PRIx64" %#016"PRIx64" vma\n",
 			vma->e->start, vma->e->end, vma->e->pgoff);
 
 		/*
@@ -600,7 +600,7 @@ static int map_private_vma(struct pstree_item *t,
 	}
 
 	vma->premmaped_addr = (unsigned long) addr;
-	pr_debug("\tpremap 0x%016"PRIx64"-0x%016"PRIx64" -> %016lx\n",
+	pr_debug("\tpremap %#016"PRIx64"-%#016"PRIx64" -> %016lx\n",
 		vma->e->start, vma->e->end, (unsigned long)addr);
 
 	if (vma->e->flags & MAP_GROWSDOWN) { /* Skip gurad page */
@@ -723,7 +723,7 @@ static int restore_priv_vma_content(struct pstree_item *t)
 			 * on demand.
 			 */
 			if (opts.lazy_pages && vma_entry_can_be_lazy(vma->e)) {
-				pr_debug("Lazy restore skips 0x%016"PRIx64"\n", vma->e->start);
+				pr_debug("Lazy restore skips %#016"PRIx64"\n", vma->e->start);
 				pr.skip_pages(&pr, PAGE_SIZE);
 				nr_lazy++;
 				continue;
@@ -908,7 +908,7 @@ int open_vmas(struct pstree_item *t)
 		if (!vma_area_is(vma, VMA_AREA_REGULAR) || !vma->vm_open)
 			continue;
 
-		pr_info("Opening 0x%016"PRIx64"-0x%016"PRIx64" 0x%016"PRIx64" (%x) vma\n",
+		pr_info("Opening %#016"PRIx64"-%#016"PRIx64" %#016"PRIx64" (%x) vma\n",
 				vma->e->start, vma->e->end,
 				vma->e->pgoff, vma->e->status);
 
