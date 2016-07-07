@@ -48,9 +48,9 @@ typedef struct user_pt_regs user_regs_struct_t;
 typedef struct user_fpsimd_state user_fpregs_struct_t;
 
 
-#define REG_RES(regs)		((u64)(regs).regs[0])
-#define REG_IP(regs)		((u64)(regs).pc)
-#define REG_SYSCALL_NR(regs)	((u64)(regs).regs[8])
+#define REG_RES(r)		((u64)(r).regs[0])
+#define REG_IP(r)		((u64)(r).pc)
+#define REG_SYSCALL_NR(r)	((u64)(r).regs[8])
 
 #define user_regs_native(pregs)			true
 #define core_is_compat(core)			false
