@@ -1170,7 +1170,7 @@ int parasite_cure_remote(struct parasite_ctl *ctl)
 	} else {
 		unsigned long ret;
 
-		syscall_seized(ctl, __NR_munmap, &ret,
+		syscall_seized(ctl, __NR(munmap, !seized_native(ctl)), &ret,
 				(unsigned long)ctl->remote_map, ctl->map_length,
 				0, 0, 0, 0);
 		if (ret) {
