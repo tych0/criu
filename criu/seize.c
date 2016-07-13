@@ -19,7 +19,7 @@
 #include "xmalloc.h"
 #include "util.h"
 
-#define NR_ATTEMPTS 5
+#define NR_ATTEMPTS 15
 
 static const char frozen[]	= "FROZEN";
 static const char freezing[]	= "FREEZING";
