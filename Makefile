@@ -190,6 +190,16 @@ $(eval $(call gen-built-in,images))
 include Makefile.compel
 
 #
+# Next the socket CR library
+#
+SOCCR_A := soccr/libsoccr.a
+soccr/%: .FORCE
+	$(Q) $(MAKE) $(build)=soccr $@
+soccr/built-in.o: .FORCE
+	$(Q) $(MAKE) $(build)=soccr all
+$(SOCCR_A): |soccr/built-in.o
+
+#
 # CRIU building done in own directory
 # with slightly different rules so we
 # can't use nmk engine directly (we
@@ -199,7 +209,7 @@ include Makefile.compel
 # the nmk so we can reuse it there.
 criu/%: images/built-in.o compel/compel-host $(VERSION_HEADER) .FORCE
 	$(Q) $(MAKE) $(build)=criu $@
-criu: images/built-in.o compel/compel-host $(VERSION_HEADER)
+criu: images/built-in.o compel/compel-host $(SOCCR_A) $(VERSION_HEADER)
 	$(Q) $(MAKE) $(build)=criu all
 .PHONY: criu
 
@@ -225,6 +235,7 @@ clean: subclean
 	$(Q) $(MAKE) $(build)=images $@
 	$(Q) $(MAKE) $(build)=criu $@
 	$(Q) $(MAKE) $(build)=compel $@
+	$(Q) $(MAKE) $(build)=soccr $@
 .PHONY: clean
 
 # mrproper depends on clean in nmk
@@ -232,6 +243,7 @@ mrproper: subclean
 	$(Q) $(MAKE) $(build)=images $@
 	$(Q) $(MAKE) $(build)=criu $@
 	$(Q) $(MAKE) $(build)=compel $@
+	$(Q) $(MAKE) $(build)=soccr $@
 	$(Q) $(RM) $(VERSION_HEADER)
 	$(Q) $(RM) $(COMPEL_VERSION_HEADER)
 	$(Q) $(RM) cscope.*
