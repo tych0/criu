@@ -677,6 +677,8 @@ class criu_cli:
 			print "Forcing %s fault" % fault
 			env = dict(os.environ, CRIU_FAULT = fault)
 		cr = subprocess.Popen(strace + [criu_bin, action] + args, env = env, preexec_fn = preexec)
+		if action == "lazy-pages":
+			return cr
 		return cr.wait()
 
 
@@ -754,6 +756,7 @@ class criu:
 		self.__iter = 0
 		self.__prev_dump_iter = None
 		self.__page_server = (opts['page_server'] and True or False)
+		self.__lazy_pages = (opts['lazy_pages'] and True or False)
 		self.__restore_sibling = (opts['sibling'] and True or False)
 		self.__join_ns = (opts['join_ns'] and True or False)
 		self.__fault = (opts['fault'])
@@ -825,6 +828,9 @@ class criu:
 		__ddir = self.__ddir()
 
 		ret = self.__criu.run(action, s_args, self.__fault, strace, preexec)
+		if action == "lazy-pages":
+			return ret
+
 		grep_errors(os.path.join(__ddir, log))
 		if ret != 0:
 			if self.__fault and int(self.__fault) < 128:
@@ -910,6 +916,12 @@ class criu:
 			r_opts.append("--ext-mount-map")
 			r_opts.append("zdtm:%s" % criu_dir)
 
+		lazy_pages_p = None
+		if self.__lazy_pages:
+			lazy_pages_p = self.__criu_act("lazy-pages", opts = [])
+			r_opts += ["--lazy-pages"]
+			time.sleep(1)  # FIXME wait user fault fd socket
+
 		if self.__leave_stopped:
 			r_opts += ['--leave-stopped']
 
@@ -918,6 +930,9 @@ class criu:
 		if self.__leave_stopped:
 			pstree_check_stopped(self.__test.getpid())
 			pstree_signal(self.__test.getpid(), signal.SIGCONT)
+
+		if lazy_pages_p and lazy_pages_p.wait():
+			raise test_fail_exc("CRIU lazy-pages")
 
 	@staticmethod
 	def check(feature):
@@ -1331,7 +1346,7 @@ class launcher:
 		self.__nr += 1
 		self.__show_progress()
 
-		nd = ('nocr', 'norst', 'pre', 'iters', 'page_server', 'sibling', 'stop',
+		nd = ('nocr', 'norst', 'pre', 'iters', 'page_server', 'sibling', 'stop', 'lazy_pages',
 				'fault', 'keep_img', 'report', 'snaps', 'sat', 'script', 'rpc',
 				'join_ns', 'dedup', 'sbs', 'freezecg', 'user', 'dry_run', 'noauto_dedup')
 		arg = repr((name, desc, flavor, {d: self.__opts[d] for d in nd}))
@@ -1577,6 +1592,8 @@ def run_tests(opts):
 			# remove ns and uns flavor in join_ns
 			if opts['join_ns']:
 				run_flavs -= set(['ns', 'uns'])
+			if opts['lazy_pages']:
+				run_flavs -= set(['ns', 'uns'])
 
 			if run_flavs:
 				l.run_test(t, tdesc, run_flavs)
@@ -1791,6 +1808,7 @@ rp.add_argument("-k", "--keep-img", help = "Whether or not to keep images after 
 		choices = ['always', 'never', 'failed'], default = 'failed')
 rp.add_argument("--report", help = "Generate summary report in directory")
 rp.add_argument("--keep-going", help = "Keep running tests in spite of failures", action = 'store_true')
+rp.add_argument("--lazy-pages", help = "restore pages on demand", action = 'store_true')
 
 lp = sp.add_parser("list", help = "List tests")
 lp.set_defaults(action = list_tests)
