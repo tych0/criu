@@ -1592,8 +1592,6 @@ def run_tests(opts):
 			# remove ns and uns flavor in join_ns
 			if opts['join_ns']:
 				run_flavs -= set(['ns', 'uns'])
-			if opts['lazy_pages']:
-				run_flavs -= set(['ns', 'uns'])
 
 			if run_flavs:
 				l.run_test(t, tdesc, run_flavs)
