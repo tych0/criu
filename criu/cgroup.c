@@ -545,7 +545,7 @@ static int collect_cgroups(struct list_head *ctls)
 	int fd = -1;
 
 	list_for_each_entry(cc, ctls, l) {
-		char path[PATH_MAX], mopts[1024];
+		char path[PATH_MAX], mopts[1024], *root;
 		char prefix[] = ".criu.cgmounts.XXXXXX";
 		struct cg_controller *cg;
 
@@ -598,7 +598,16 @@ static int collect_cgroups(struct list_head *ctls)
 			return -1;
 
 		path_pref_len = snprintf(path, PATH_MAX, "/proc/self/fd/%d", fd);
-		snprintf(path + path_pref_len, PATH_MAX - path_pref_len, "%s", cc->path);
+
+		root = cc->path;
+		if (opts.new_global_cg_root)
+			root = opts.new_global_cg_root;
+
+		/* XXX: figure out how to do this
+		list_for_each_entry(
+		*/
+
+		snprintf(path + path_pref_len, PATH_MAX - path_pref_len, "%s", root);
 
 		ret = ftw(path, add_cgroup, 4);
 		if (ret < 0)
