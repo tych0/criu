@@ -28,7 +28,7 @@ ifeq ($(GMON),1)
 endif
 
 # msg-* printing
-include $(__nmk_dir)/msg.mk
+include $(__nmk_dir)msg.mk
 
 #
 # Needed libraries checks
