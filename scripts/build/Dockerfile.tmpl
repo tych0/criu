@@ -24,4 +24,4 @@ WORKDIR /criu
 RUN make clean
 RUN make -j $(nproc) criu/parasite-syscall.o
 RUN make -j $(nproc)
-RUN make test/compel/handle_binary && ./test/compel/handle_binary
+#RUN make test/compel/handle_binary && ./test/compel/handle_binary
