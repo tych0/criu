@@ -193,9 +193,9 @@ include Makefile.compel
 #
 # But note that we're already included
 # the nmk so we can reuse it there.
-criu/%: images/built-in.o compel/compel $(VERSION_HEADER) .FORCE
+criu/%: images/built-in.o compel/compel-host $(VERSION_HEADER) .FORCE
 	$(Q) $(MAKE) $(build)=criu $@
-criu: images/built-in.o compel/compel $(VERSION_HEADER)
+criu: images/built-in.o compel/compel-host $(VERSION_HEADER)
 	$(Q) $(MAKE) $(build)=criu all
 .PHONY: criu
 
