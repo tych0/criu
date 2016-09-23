@@ -46,6 +46,9 @@ include $(SRC_DIR)/criu/Makefile.packages
 CONFIG_HEADER := $(obj)/include/config.h
 ifneq ($(filter-out clean mrproper,$(MAKECMDGOALS)),)
 include $(SRC_DIR)/criu/Makefile.config
+else
+# To clean all files, enable make/build options here
+export CONFIG_COMPAT := y
 endif
 
 #
