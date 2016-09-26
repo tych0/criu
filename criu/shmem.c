@@ -16,7 +16,7 @@
 #include "vma.h"
 #include "mem.h"
 #include "config.h"
-#include "syscall-codes.h"
+#include "uapi/std/syscall-codes.h"
 #include "asm/bitops.h"
 #include "criu-log.h"
 

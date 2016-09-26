@@ -2,7 +2,7 @@
 
 #include "asm/bitsperlong.h"
 
-#include "syscall.h"
+#include "uapi/std/syscall.h"
 #include "log.h"
 
 struct simple_buf {
