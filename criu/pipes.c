@@ -1,7 +1,6 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/stat.h>
-#include <fcntl.h>
 #include <stdlib.h>
 #include <sys/mman.h>
 
@@ -16,6 +15,7 @@
 #include "protobuf.h"
 #include "images/pipe.pb-c.h"
 #include "images/pipe-data.pb-c.h"
+#include "fcntl.h"
 
 static LIST_HEAD(pipes);
 
