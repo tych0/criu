@@ -4,7 +4,7 @@
 #include "asm/types.h"
 #include "asm/fpu.h"
 #include "images/core.pb-c.h"
-#include "syscall-codes.h"
+#include "uapi/std/syscall-codes.h"
 
 struct rt_sigcontext {
 	unsigned long			r8;

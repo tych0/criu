@@ -11,7 +11,7 @@
 #include "bug.h"
 
 #ifdef CR_NOGLIBC
-# include "syscall.h"
+# include "uapi/std/syscall.h"
 #else
 # include <unistd.h>
 # include <sys/syscall.h>

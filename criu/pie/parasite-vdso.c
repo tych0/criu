@@ -13,7 +13,7 @@
 #include "asm/types.h"
 #include "asm/page.h"
 
-#include "syscall.h"
+#include "uapi/std/syscall.h"
 #include "image.h"
 #include "parasite-vdso.h"
 #include "vma.h"
