@@ -22,6 +22,11 @@
 #include "asm/parasite.h"
 #include "asm/restorer.h"
 
+int compel_main(void *arg_p, unsigned int arg_s)
+{
+	return 0;
+}
+
 static int tsock = -1;
 
 static struct rt_sigframe *sigframe;

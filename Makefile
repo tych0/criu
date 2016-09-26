@@ -227,9 +227,9 @@ $(SOCCR_A): |soccr/built-in.o
 #
 # But note that we're already included
 # the nmk so we can reuse it there.
-criu/%: images/built-in.o compel/compel-host $(VERSION_HEADER) .FORCE
+criu/%: images/built-in.o compel/plugins/std.built-in.o compel/compel-host $(VERSION_HEADER) .FORCE
 	$(Q) $(MAKE) $(build)=criu $@
-criu: images/built-in.o compel/compel-host $(SOCCR_A) $(VERSION_HEADER)
+criu: images/built-in.o compel/plugins/std.built-in.o compel/compel-host $(SOCCR_A) $(VERSION_HEADER)
 	$(Q) $(MAKE) $(build)=criu all
 .PHONY: criu
 
@@ -255,6 +255,7 @@ clean: subclean
 	$(Q) $(MAKE) $(build)=images $@
 	$(Q) $(MAKE) $(build)=criu $@
 	$(Q) $(MAKE) $(build)=compel $@
+	$(Q) $(MAKE) $(build)=compel/plugins $@
 	$(Q) $(MAKE) $(build)=soccr $@
 .PHONY: clean
 
@@ -263,6 +264,7 @@ mrproper: subclean
 	$(Q) $(MAKE) $(build)=images $@
 	$(Q) $(MAKE) $(build)=criu $@
 	$(Q) $(MAKE) $(build)=compel $@
+	$(Q) $(MAKE) $(build)=compel/plugins $@
 	$(Q) $(MAKE) $(build)=soccr $@
 	$(Q) $(RM) $(CONFIG_HEADER)
 	$(Q) $(RM) $(VERSION_HEADER)
