@@ -13,12 +13,12 @@ $(COMPEL_VERSION_HEADER): $(SRC_DIR)/Makefile.versions
 
 #
 # Compel itself.
-compel/%: $(COMPEL_VERSION_HEADER) .FORCE
+compel/%: $(COMPEL_VERSION_HEADER) $(CONFIG_HEADER) .FORCE
 	$(Q) $(MAKE) $(build)=compel $@
 
 #
 # Plugins
-compel/plugins/%: $(COMPEL_VERSION_HEADER) .FORCE
+compel/plugins/%: $(COMPEL_VERSION_HEADER) $(CONFIG_HEADER) .FORCE
 	$(Q) $(MAKE) $(build)=compel/plugins $@
 
 compel/compel: compel/built-in.o compel/lib.a $(COMPEL_VERSION_HEADER)

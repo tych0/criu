@@ -179,6 +179,26 @@ endif
 	$(Q) echo "#endif /* __CR_VERSION_H__ */"				>> $@
 
 #
+# piegen tool might be disabled by hands. Don't use it until
+# you know what you're doing.
+ifneq ($(filter ia32 x86 ppc64,$(ARCH)),)
+        ifneq ($(PIEGEN),no)
+                piegen-y := y
+                export piegen-y
+        endif
+endif
+
+#
+# Configure variables.
+export CONFIG_HEADER := $(SRC_DIR)/criu/include/config.h
+ifeq ($(filter clean mrproper,$(MAKECMDGOALS)),)
+include $(SRC_DIR)/Makefile.config
+else
+# To clean all files, enable make/build options here
+export CONFIG_COMPAT := y
+endif
+
+#
 # Protobuf images first, they are not depending
 # on anything else.
 $(eval $(call gen-built-in,images))
@@ -193,9 +213,9 @@ include Makefile.compel
 # Next the socket CR library
 #
 SOCCR_A := soccr/libsoccr.a
-soccr/%: .FORCE
+soccr/%: $(CONFIG_HEADER) .FORCE
 	$(Q) $(MAKE) $(build)=soccr $@
-soccr/built-in.o: .FORCE
+soccr/built-in.o: $(CONFIG_HEADER) .FORCE
 	$(Q) $(MAKE) $(build)=soccr all
 $(SOCCR_A): |soccr/built-in.o
 
@@ -207,7 +227,7 @@ $(SOCCR_A): |soccr/built-in.o
 #
 # But note that we're already included
 # the nmk so we can reuse it there.
-criu/%: images/built-in.o compel/compel-host $(SOCCR_A) $(VERSION_HEADER) .FORCE
+criu/%: images/built-in.o compel/compel-host $(VERSION_HEADER) .FORCE
 	$(Q) $(MAKE) $(build)=criu $@
 criu: images/built-in.o compel/compel-host $(SOCCR_A) $(VERSION_HEADER)
 	$(Q) $(MAKE) $(build)=criu all
@@ -244,6 +264,7 @@ mrproper: subclean
 	$(Q) $(MAKE) $(build)=criu $@
 	$(Q) $(MAKE) $(build)=compel $@
 	$(Q) $(MAKE) $(build)=soccr $@
+	$(Q) $(RM) $(CONFIG_HEADER)
 	$(Q) $(RM) $(VERSION_HEADER)
 	$(Q) $(RM) $(COMPEL_VERSION_HEADER)
 	$(Q) $(RM) cscope.*
