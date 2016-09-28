@@ -1592,9 +1592,8 @@ static int cr_lazy_mem_dump(void)
 	ret = cr_page_server(false, -1);
 
 	for_each_pstree_item(item) {
-		struct parasite_ctl *ctl = dmpi(item)->parasite_ctl;
-		destroy_page_pipe(ctl->mem_pp);
-		parasite_cure_local(ctl);
+		destroy_page_pipe(dmpi(item)->mem_pp);
+		parasite_cure_local(dmpi(item)->parasite_ctl);
 	}
 
 	if (ret)

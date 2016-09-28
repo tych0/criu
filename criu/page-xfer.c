@@ -632,7 +632,7 @@ static int page_server_get_pages(int sk, struct page_server_iov *pi)
 	int ret;
 
 	item = pstree_item_by_virt(pi->dst_id);
-	pp = dmpi(item)->parasite_ctl->mem_pp;
+	pp = dmpi(item)->mem_pp;
 
 	ret = page_pipe_split(pp, pi->vaddr, &pi->nr_pages);
 	if (ret)
