@@ -135,6 +135,10 @@ endif
 
 CFLAGS			+= $(WARNINGS) $(DEFINES)
 
+# Default target
+all: criu lib
+.PHONY: all
+
 #
 # Version headers.
 include Makefile.versions
@@ -238,9 +242,6 @@ lib/%: criu .FORCE
 lib: criu
 	$(Q) $(MAKE) -C lib all
 .PHONY: lib
-
-all: criu lib
-.PHONY: all
 
 subclean:
 	$(call msg-clean, criu)
