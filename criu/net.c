@@ -58,6 +58,10 @@
 #define IFLA_MACVLAN_MAX 7
 #endif
 
+#ifndef IFLA_MACVLAN_FLAGS
+#define IFLA_MACVLAN_FLAGS 2
+#endif
+
 static int ns_sysfs_fd = -1;
 
 int read_ns_sys_file(char *path, char *buf, int len)
