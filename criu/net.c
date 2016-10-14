@@ -50,6 +50,14 @@
 #define RTM_NEWNSID		88
 #endif
 
+/* if we're being compiled with older headers, allow more macvlan attributes to
+ * be set in case we're talking to a newer kernel
+ */
+#if IFLA_MACVLAN_MAX < 7
+#undef IFLA_MACVLAN_MAX
+#define IFLA_MACVLAN_MAX 7
+#endif
+
 static int ns_sysfs_fd = -1;
 
 int read_ns_sys_file(char *path, char *buf, int len)
