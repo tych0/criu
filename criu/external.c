@@ -1,5 +1,5 @@
 #include "err.h"
-#include "list.h"
+#include "common/list.h"
 #include "cr_options.h"
 #include "xmalloc.h"
 #include "external.h"
