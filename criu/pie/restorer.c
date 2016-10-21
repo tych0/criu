@@ -25,7 +25,7 @@
 #include "signal.h"
 #include "config.h"
 #include "prctl.h"
-#include "log.h"
+#include "criu-log.h"
 #include "util.h"
 #include "image.h"
 #include "sk-inet.h"

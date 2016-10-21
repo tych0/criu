@@ -6,6 +6,7 @@
 #include "page.h"
 #include "config.h"
 #include "util.h"
+#include "criu-log.h"
 #include "page-pipe.h"
 #include "fcntl.h"
 
