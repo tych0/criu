@@ -8,7 +8,6 @@
 
 #include "../soccr/soccr.h"
 
-#include "int.h"
 #include "cr_options.h"
 #include "util.h"
 #include "common/list.h"
