@@ -31,7 +31,7 @@
 #include "sysctl.h"
 #include "kerndat.h"
 #include "external.h"
-
+#include "util.h"
 #include "protobuf.h"
 #include "images/netdev.pb-c.h"
 
