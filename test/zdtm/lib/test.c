@@ -102,18 +102,32 @@ void test_ext_init(int argc, char **argv)
 int write_pidfile(int pid)
 {
 	int fd;
+	char tmp[] = ".zdtm.pidfile.XXXXXX";
 
-	fd = open(pidfile, O_CREAT | O_EXCL | O_WRONLY, 0666);
+	fd = mkstemp(tmp);
 	if (fd == -1) {
-		fprintf(stderr, "Can't create the file %s: %m\n", pidfile);
+		fprintf(stderr, "Can't create the file %s: %m\n", tmp);
 		return -1;
 	}
+
+	if (fchmod(fd, 0666) < 0) {
+		close(fd);
+		fprintf(stderr, "Can't fchmod %s: %m\n", tmp);
+		return -1;
+	}
+
 	if (dprintf(fd, "%d", pid) == -1) {
-		fprintf(stderr, "Can't write in the file %s: %m\n", pidfile);
+		close(fd);
+		fprintf(stderr, "Can't write in the file %s: %m\n", tmp);
 		return -1;
 	}
 
 	close(fd);
+
+	if (rename(tmp, pidfile) < 0) {
+		fprintf(stderr, "Can't rename %s to %s: %m\n", tmp, pidfile);
+		return -1;
+	}
 
 	return 0;
 }
