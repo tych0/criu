@@ -6,10 +6,10 @@
 #include <sys/syscall.h>
 #include <sys/auxv.h>
 
+#include "types.h"
 #include "asm/processor-flags.h"
 #include "asm/parasite-syscall.h"
 #include "asm/restorer.h"
-#include "asm/types.h"
 #include "asm/fpu.h"
 
 #include "cr_options.h"
