@@ -90,8 +90,6 @@ static int collect_profile(char *path, int offset, char *dir, AaNamespace *ns)
 {
 	AaPolicy *cur;
 	int fd, my_offset, ret;
-	struct stat sb;
-	ssize_t n;
 	void *m;
 	FILE *f;
 
@@ -132,24 +130,8 @@ static int collect_profile(char *path, int offset, char *dir, AaNamespace *ns)
 		goto err;
 	}
 
-	if (fstat(fd, &sb) < 0) {
-		pr_perror("failed to stat %s", path);
-		goto close;
-	}
-
-	cur->blob.len = sb.st_size;
-	cur->blob.data = xmalloc(sb.st_size);
-	if (!cur->blob.data)
-		goto close;
-
-	n = read(fd, cur->blob.data, sb.st_size);
-	if (n < 0) {
-		pr_perror("failed to read %s", path);
-		goto close;
-	}
-
-	if (n != sb.st_size) {
-		pr_err("didn't read all of %s\n", path);
+	if (read_all(fd, (void **) &cur->blob.data, &cur->blob.len) < 0) {
+		pr_err("could't read all of aa policy %s\n", path);
 		goto close;
 	}
 

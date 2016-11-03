@@ -281,6 +281,8 @@ int setup_tcp_client(char *addr);
 /* *dir should be writable and at least PATH_MAX long */
 int rm_rf(char *dir);
 
+int read_all(int fd, void **out, size_t *n);
+
 #define LAST_PID_PATH		"sys/kernel/ns_last_pid"
 #define PID_MAX_PATH		"sys/kernel/pid_max"
 

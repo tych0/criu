@@ -1225,3 +1225,43 @@ out:
 	target[offset] = 0;
 	return ret;
 }
+
+int read_all(int fd, void **out, size_t *n)
+{
+	struct stat sb;
+	ssize_t n_read = 0;
+	int i = 0;
+
+	if (fstat(fd, &sb) < 0) {
+		pr_perror("failed to stat");
+		return -1;
+	}
+
+	*n = sb.st_size;
+pr_err("size %lu\n", *n);
+	*out = xmalloc(sb.st_size);
+	if (!*out)
+		return -1;
+
+	while (n_read < *n) {
+		ssize_t r;
+		char *buf = *out;
+
+errno = 0;
+		r = read(fd, buf + n_read, *n - n_read);
+		if (r < 0) {
+			pr_perror("failed to read");
+			xfree(*out);
+			*n = 0;
+			return -1;
+		}
+
+		n_read += r;
+pr_perror("r: %lu n_read %lu, *n: %lu", r, n_read, *n);
+		i++;
+		if (i == 5)
+			return -1;
+	}
+
+	return 0;
+}
