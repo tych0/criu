@@ -53,6 +53,8 @@ struct kerndat_s {
 	bool has_uffd;
 	unsigned long uffd_features;
 	bool has_thp_disable;
+	bool has_nsid;
+	bool has_link_nsid;
 };
 
 extern struct kerndat_s kdat;
