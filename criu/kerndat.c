@@ -28,6 +28,7 @@
 #include "proc_parse.h"
 #include "config.h"
 #include "sk-inet.h"
+#include "sockets.h"
 #include <compel/plugins/std/syscall-codes.h>
 #include <compel/compel.h>
 #include "netfilter.h"
@@ -861,6 +862,8 @@ int kerndat_init(void)
 		ret = kerndat_uffd();
 	if (!ret)
 		ret = kerndat_has_thp_disable();
+	if (!ret)
+		ret = kerndat_socket_netns();
 
 	kerndat_lsm();
 	kerndat_mmap_min_addr();
