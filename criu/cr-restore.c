@@ -1569,9 +1569,6 @@ static int restore_task_with_children(void *_arg)
 
 	/* Restore root task */
 	if (current->parent == NULL) {
-		if (fdstore_init())
-			goto err;
-
 		if (join_namespaces()) {
 			pr_perror("Join namespaces failed");
 			goto err;
@@ -1932,6 +1929,9 @@ static int restore_root_task(struct pstree_item *init)
 	}
 
 	if (prepare_userns_hook())
+		return -1;
+
+	if (fdstore_init())
 		return -1;
 
 	if (prepare_namespace_before_tasks())
