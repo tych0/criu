@@ -397,6 +397,8 @@ out:
 
 int open_page_xfer(struct page_xfer *xfer, int fd_type, long id)
 {
+	xfer->offset = 0;
+
 	if (opts.use_page_server)
 		return open_page_server_xfer(xfer, fd_type, id);
 	else
@@ -404,10 +406,10 @@ int open_page_xfer(struct page_xfer *xfer, int fd_type, long id)
 }
 
 static int page_xfer_dump_hole(struct page_xfer *xfer,
-			       struct iovec *hole, unsigned long off, u32 flags)
+			       struct iovec *hole, u32 flags)
 {
-	BUG_ON(hole->iov_base < (void *)off);
-	hole->iov_base -= off;
+	BUG_ON(hole->iov_base < (void *)xfer->offset);
+	hole->iov_base -= xfer->offset;
 	pr_debug("\th %p [%u]\n", hole->iov_base,
 			(unsigned int)(hole->iov_len / PAGE_SIZE));
 
@@ -430,7 +432,7 @@ static int get_hole_flags(struct page_pipe *pp, int n)
 }
 
 static int dump_holes(struct page_xfer *xfer, struct page_pipe *pp,
-		      unsigned int *cur_hole, void *limit, unsigned long off)
+		      unsigned int *cur_hole, void *limit)
 {
 	int ret;
 
@@ -442,7 +444,7 @@ static int dump_holes(struct page_xfer *xfer, struct page_pipe *pp,
 			break;
 
 		hole_flags = get_hole_flags(pp, *cur_hole);
-		ret = page_xfer_dump_hole(xfer, &hole, off, hole_flags);
+		ret = page_xfer_dump_hole(xfer, &hole, hole_flags);
 		if (ret)
 			return ret;
 	}
@@ -451,7 +453,7 @@ static int dump_holes(struct page_xfer *xfer, struct page_pipe *pp,
 }
 
 int page_xfer_dump_pages(struct page_xfer *xfer, struct page_pipe *pp,
-			 unsigned long off, bool dump_lazy)
+		bool dump_lazy)
 {
 	struct page_pipe_buf *ppb;
 	unsigned int cur_hole = 0;
@@ -468,12 +470,12 @@ int page_xfer_dump_pages(struct page_xfer *xfer, struct page_pipe *pp,
 			struct iovec iov = ppb->iov[i];
 			u32 flags = PE_PRESENT;
 
-			ret = dump_holes(xfer, pp, &cur_hole, iov.iov_base, off);
+			ret = dump_holes(xfer, pp, &cur_hole, iov.iov_base);
 			if (ret)
 				return ret;
 
-			BUG_ON(iov.iov_base < (void *)off);
-			iov.iov_base -= off;
+			BUG_ON(iov.iov_base < (void *)xfer->offset);
+			iov.iov_base -= xfer->offset;
 			pr_debug("\tp %p [%u]\n", iov.iov_base,
 					(unsigned int)(iov.iov_len / PAGE_SIZE));
 
@@ -494,7 +496,7 @@ int page_xfer_dump_pages(struct page_xfer *xfer, struct page_pipe *pp,
 		}
 	}
 
-	return dump_holes(xfer, pp, &cur_hole, NULL, off);
+	return dump_holes(xfer, pp, &cur_hole, NULL);
 }
 
 /*
