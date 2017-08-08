@@ -1226,6 +1226,8 @@ int cr_check(void)
 		ret |= check_ns_get_parent();
 		ret |= check_pid_for_children_ns();
 		ret |= check_can_map_vdso();
+		ret |= check_uffd();
+		ret |= check_uffd_noncoop();
 	}
 
 	/*
