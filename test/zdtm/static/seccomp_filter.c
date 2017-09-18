@@ -16,12 +16,22 @@
 #include <linux/filter.h>
 #endif
 
+#ifndef SECCOMP_FILTER_FLAG_LOG
+#define SECCOMP_FILTER_FLAG_LOG 2
+#endif
+
+#ifndef PTRACE_SECCOMP_GET_FLAGS
+#define PTRACE_SECCOMP_GET_FLAGS 0x420d
+#endif
+
 #include "zdtmtst.h"
 
 const char *test_doc	= "Check that SECCOMP_MODE_FILTER is restored";
 const char *test_author	= "Tycho Andersen <tycho.andersen@canonical.com>";
 
 #ifdef __NR_seccomp
+
+bool supports_log;
 
 int get_seccomp_mode(pid_t pid)
 {
@@ -49,6 +59,35 @@ int get_seccomp_mode(pid_t pid)
 	return -1;
 }
 
+int check_log_set(pid_t pid)
+{
+	long flags;
+	int ret = 0;
+
+	if (ptrace(PTRACE_ATTACH, pid, NULL, NULL)) {
+		pr_perror("ptrace attach");
+		return -1;
+	}
+
+	waitpid(pid, NULL, 0);
+
+	flags = ptrace(PTRACE_SECCOMP_GET_FLAGS, pid, 0, NULL);
+	if (flags < 0 && errno != EIO) {
+		pr_perror("get flags failed\n");
+		ret = -1;
+	} else if (!(flags & SECCOMP_FILTER_FLAG_LOG)) {
+		pr_err("bad flag bit\n");
+		ret = -1;
+	}
+
+	if (ptrace(PTRACE_DETACH, pid, NULL, NULL)) {
+		pr_perror("ptrace detach\n");
+		ret = -1;
+	}
+
+	return ret;
+}
+
 int filter_syscall(int syscall_nr)
 {
 	struct sock_filter filter[] = {
@@ -63,12 +102,61 @@ int filter_syscall(int syscall_nr)
 		.filter = filter,
 	};
 
-	if (prctl(PR_SET_SECCOMP, SECCOMP_MODE_FILTER, &bpf_prog) < 0) {
+	unsigned long flags = 0;
+
+	if (supports_log)
+		flags |= SECCOMP_FILTER_FLAG_LOG;
+
+	if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, flags, &bpf_prog) < 0) {
 		pr_perror("prctl failed");
 		return -1;
 	}
 
 	return 0;
+}
+
+bool test_for_log_flag(void)
+{
+	pid_t pid;
+	int status;
+
+	struct sock_filter filter[] = {
+		BPF_STMT(BPF_LD+BPF_W+BPF_ABS, offsetof(struct seccomp_data, nr)),
+		BPF_JUMP(BPF_JMP+BPF_JEQ+BPF_K, __NR_ptrace, 0, 1),
+		BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_KILL),
+		BPF_STMT(BPF_RET+BPF_K, SECCOMP_RET_ALLOW),
+	};
+
+	struct sock_fprog bpf_prog = {
+		.len = (unsigned short)(sizeof(filter)/sizeof(filter[0])),
+		.filter = filter,
+	};
+
+	/* We have to fork to do this test, because the check for
+	 * PTRACE_SECCOMP_GET_FLAGS checks whether or not we're under the
+	 * influence of a seccomp filter, so we need a throwaway process to
+	 * check for -EINVAL.
+	 */
+	pid = fork();
+	if (pid < 0) {
+		pr_perror("fork");
+		return false;
+	}
+
+	if (!pid) {
+		if (syscall(__NR_seccomp, SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_LOG, &bpf_prog) < 0) {
+			exit(1);
+		}
+
+		exit(0);
+	}
+
+	if (waitpid(pid, &status, 0)) {
+		pr_perror("waitpid");
+		return false;
+	}
+
+	return WIFEXITED(status) && !WEXITSTATUS(status);
 }
 
 int main(int argc, char ** argv)
@@ -77,6 +165,8 @@ int main(int argc, char ** argv)
 	int mode, status;
 	int sk_pair[2], sk, ret;
 	char c = 'K';
+
+	supports_log = test_for_log_flag();
 
 	test_init(argc, argv);
 
@@ -154,6 +244,11 @@ int main(int argc, char ** argv)
 
 	test_daemon();
 	test_waitsig();
+
+	if (supports_log && check_log_set(pid)) {
+		pr_perror("log not set?\n");
+		goto err;
+	}
 
 	if (write(sk, &c, 1) != 1) {
 		pr_perror("write");
