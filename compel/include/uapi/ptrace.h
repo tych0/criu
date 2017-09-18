@@ -49,6 +49,10 @@
 #define PTRACE_SECCOMP_GET_FILTER	0x420c
 #endif
 
+#ifndef PTRACE_SECCOMP_GET_FLAGS
+#define PTRACE_SECCOMP_GET_FLAGS	0x420d
+#endif
+
 #ifdef PTRACE_EVENT_STOP
 # if PTRACE_EVENT_STOP == 7 /* Bad value from Linux 3.1-3.3, fixed in 3.4 */
 #  undef PTRACE_EVENT_STOP

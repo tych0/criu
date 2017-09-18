@@ -30,4 +30,9 @@ extern int collect_seccomp_filters(void);
 extern int prepare_seccomp_filters(void);
 struct task_restore_args;
 extern int seccomp_filters_get_rst_pos(CoreEntry *item, struct task_restore_args *);
+
+struct seccomp_restorer_arg {
+	unsigned int flags;
+	struct sock_fprog fprog;
+};
 #endif
