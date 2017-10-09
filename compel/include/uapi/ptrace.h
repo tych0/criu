@@ -49,6 +49,14 @@
 #define PTRACE_SECCOMP_GET_FILTER	0x420c
 #endif
 
+#ifndef PTRACE_SECCOMP_GET_METADATA
+#define PTRACE_SECCOMP_GET_METADATA	0x420d
+struct seccomp_metadata {
+	unsigned long filter_off;
+	unsigned int flags;
+};
+#endif
+
 #ifdef PTRACE_EVENT_STOP
 # if PTRACE_EVENT_STOP == 7 /* Bad value from Linux 3.1-3.3, fixed in 3.4 */
 #  undef PTRACE_EVENT_STOP

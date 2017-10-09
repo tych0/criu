@@ -56,6 +56,8 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 	for (i = 0; true; i++) {
 		int len;
 		struct seccomp_info *info, *inherited = NULL;
+		struct seccomp_metadata md;
+		long ret;
 
 		len = ptrace(PTRACE_SECCOMP_GET_FILTER, item->pid->real, i, buf);
 		if (len < 0) {
@@ -104,6 +106,25 @@ static int collect_filter_for_pstree(struct pstree_item *item)
 		}
 
 		memcpy(info->filter.filter.data, buf, info->filter.filter.len);
+
+		md.filter_off = i;
+		ret = ptrace(PTRACE_SECCOMP_GET_METADATA, item->pid->real, sizeof(md), &md);
+		if (ret < 0) {
+			/* EIO means that dumping flags was not supported,
+			 * which is fine. */
+			if (errno != EIO) {
+				pr_perror("getting seccomp flags failed");
+				ret = -1;
+				xfree(info->filter.filter.data);
+				xfree(info);
+				goto out;
+			} else {
+				info->filter.has_flags = false;
+			}
+		} else {
+			info->filter.has_flags = true;
+			info->filter.flags = md.flags;
+		}
 
 		info->prev = infos;
 		infos = info;
@@ -220,7 +241,7 @@ int prepare_seccomp_filters(void)
 int seccomp_filters_get_rst_pos(CoreEntry *core, struct task_restore_args *ta)
 {
 	SeccompFilter *sf = NULL;
-	struct sock_fprog *arr = NULL;
+	struct seccomp_restorer_arg *arr = NULL;
 	void *filter_data = NULL;
 	int ret = -1, i, n_filters;
 	size_t filter_size = 0;
@@ -230,7 +251,7 @@ int seccomp_filters_get_rst_pos(CoreEntry *core, struct task_restore_args *ta)
 	if (!core->tc->has_seccomp_filter)
 		return 0;
 
-	ta->seccomp_filters = (struct sock_fprog *)rst_mem_align_cpos(RM_PRIVATE);
+	ta->seccomp_filters = (struct seccomp_restorer_arg *)rst_mem_align_cpos(RM_PRIVATE);
 
 	BUG_ON(core->tc->seccomp_filter > se->n_seccomp_filters);
 	sf = se->seccomp_filters[core->tc->seccomp_filter];
@@ -245,17 +266,25 @@ int seccomp_filters_get_rst_pos(CoreEntry *core, struct task_restore_args *ta)
 		sf = se->seccomp_filters[sf->prev];
 	}
 
+	n_filters = sizeof(struct sock_fprog);
+
 	n_filters = ta->seccomp_filters_n;
-	arr = rst_mem_alloc(sizeof(struct sock_fprog) * n_filters + filter_size, RM_PRIVATE);
+	arr = rst_mem_alloc(sizeof(struct seccomp_restorer_arg) * n_filters + filter_size, RM_PRIVATE);
 	if (!arr)
 		goto out;
 
 	filter_data = &arr[n_filters];
 	sf = se->seccomp_filters[core->tc->seccomp_filter];
 	for (i = 0; i < n_filters; i++) {
-		struct sock_fprog *fprog = &arr[i];
+		struct seccomp_restorer_arg *seccomp = &arr[i];
+		struct sock_fprog *fprog = &seccomp->fprog;
 
 		BUG_ON(sf->filter.len % sizeof(struct sock_filter));
+		if (sf->has_flags)
+			seccomp->flags = sf->flags;
+		else
+			seccomp->flags = 0;
+
 		fprog->len = sf->filter.len / sizeof(struct sock_filter);
 
 		memcpy(filter_data, sf->filter.data, sf->filter.len);

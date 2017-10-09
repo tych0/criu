@@ -416,16 +416,19 @@ static int restore_seccomp(struct task_restore_args *args)
 		filter_data = &args->seccomp_filters[args->seccomp_filters_n];
 
 		for (i = 0; i < args->seccomp_filters_n; i++) {
-			struct sock_fprog *fprog = &args->seccomp_filters[i];
-
-			fprog->filter = filter_data;
+			struct seccomp_restorer_arg *seccomp = &args->seccomp_filters[i];
+			struct sock_fprog *fprog = &seccomp->fprog;
 
 			/* We always TSYNC here, since we require that the
 			 * creds for all threads be the same; this means we
 			 * don't have to restore_seccomp() in threads, and that
 			 * future TSYNC behavior will be correct.
 			 */
-			ret = sys_seccomp(SECCOMP_SET_MODE_FILTER, SECCOMP_FILTER_FLAG_TSYNC, (char *) fprog);
+			unsigned int flags = seccomp->flags | SECCOMP_FILTER_FLAG_TSYNC;
+
+			fprog->filter = filter_data;
+
+			ret = sys_seccomp(SECCOMP_SET_MODE_FILTER, flags, (char *) fprog);
 			if (ret < 0) {
 				pr_err("sys_seccomp() returned %d\n", ret);
 				goto die;
